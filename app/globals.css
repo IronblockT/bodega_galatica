@@ -1,26 +1,48 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Tatooine / Premium palette */
+  --bg: 248 246 242;           /* areia clara */
+  --card: 255 255 255;
+  --text: 20 20 24;
+  --muted: 110 110 120;
+
+  --brand-sand: 236 214 170;   /* areia quente */
+  --brand-amber: 245 158 11;   /* amber */
+  --brand-sunset: 251 113 133; /* rose */
+  --brand-night: 9 10 12;      /* quase preto */
+  --brand-ink: 22 24 28;       /* carvão premium */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: rgb(var(--bg));
+  color: rgb(var(--text));
+}
+
+/* utilitários premium */
+.bg-sand {
+  background: rgb(var(--bg));
+}
+
+.shadow-premium {
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.10),
+    0 1px 0 rgba(255,255,255,.06) inset;
+}
+
+.sunset-line {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, .0),
+    rgba(245, 158, 11, .9),
+    rgba(251, 113, 133, .9),
+    rgba(245, 158, 11, .0)
+  );
+  height: 2px;
 }
