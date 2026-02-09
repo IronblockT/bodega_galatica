@@ -106,7 +106,7 @@ export function Bounties() {
                 group rounded-2xl bg-white/80 backdrop-blur
                 ring-1 ring-black/5 shadow-premium
                 hover:shadow-[0_18px_50px_rgba(0,0,0,.14)]
-                transition overflow-hidden
+                transition
               "
             >
               {/* imagem */}

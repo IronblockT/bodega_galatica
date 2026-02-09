@@ -43,7 +43,7 @@ function formatBRL(v: number) {
 
 export function CargoSection() {
   return (
-    <section className="relative bg-[#0B0C10] overflow-hidden">
+    <section className="relative bg-[#0B0C10]">
       {/* fundo espacial discreto */}
       <div className="pointer-events-none absolute inset-0 opacity-[0.18]"
         style={{
@@ -87,7 +87,6 @@ export function CargoSection() {
                 group rounded-2xl bg-white/5 backdrop-blur
                 ring-1 ring-white/10
                 hover:bg-white/10 transition
-                overflow-hidden
               "
             >
               {/* imagem */}

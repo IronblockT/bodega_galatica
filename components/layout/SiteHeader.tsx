@@ -3,6 +3,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '@/components/hooks/useAuth';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
 
 type NavItem = {
   label: string;
@@ -160,16 +163,37 @@ function Dropdown({
 }
 
 export function SiteHeader() {
+  const router = useRouter();
+
   const [openLabel, setOpenLabel] = useState<string | null>(null);
   const items = useMemo(() => NAV_ITEMS, []);
 
   const navRef = useRef<HTMLDivElement>(null);
 
+  const { isLoggedIn, user, signOut, profile } = useAuth();
+
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
+
+  const avatarKey = profile?.avatar_key ?? null;  
+
+  async function handleLogout() {
+    await signOut();
+    setAccountOpen(false);
+    router.push('/');
+  }
+
   // Fecha ao clicar fora
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (navRef.current && !navRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+
+      if (navRef.current && !navRef.current.contains(target)) {
         setOpenLabel(null);
+      }
+
+      if (accountRef.current && !accountRef.current.contains(target)) {
+        setAccountOpen(false);
       }
     }
 
@@ -182,6 +206,7 @@ export function SiteHeader() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setOpenLabel(null);
+        setAccountOpen(false);
       }
     }
 
@@ -189,8 +214,11 @@ export function SiteHeader() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const avatarText =
+    (user?.email?.[0] ?? 'U').toUpperCase();
+
   return (
-    <header className="sticky top-0 z-50 w-full">
+    <header className="fixed top-0 left-0 right-0 z-50 w-full">
       {/* HEADER PRINCIPAL */}
       <div className="bg-[#07080A]">
         <div className="pointer-events-none absolute left-0 right-0 top-0 h-24 bg-gradient-to-b from-amber-500/10 via-rose-500/5 to-transparent" />
@@ -198,7 +226,7 @@ export function SiteHeader() {
         <div className="mx-auto flex h-24 max-w-6xl items-center gap-6 px-4">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-4 shrink-0">
-            <div className="relative h-24 w-40 overflow-hidden flex items-center justify-center">
+            <div className="relative h-24 w-40 flex items-center justify-center">
               <Image
                 src="/logo-bodega-galatica.png"
                 alt="Bodega Galática"
@@ -246,21 +274,17 @@ export function SiteHeader() {
           </div>
 
           {/* Ações (direita) */}
+          {/* Ações (direita) */}
           <nav className="ml-auto flex items-center gap-2">
+            {/* Comprar */}
             <Link
-              href="/entrar"
-              className="rounded-full px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors"
-            >
-              Entrar
-            </Link>
-
-            <Link
-              href="/cartas"
+              href={isLoggedIn ? '/cartas' : '/entrar'}
               className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/85 hover:bg-white/10 hover:border-white/25 hover:text-white transition"
             >
               Comprar
             </Link>
 
+            {/* Vender */}
             <Link
               href="/vender"
               className={[
@@ -273,6 +297,99 @@ export function SiteHeader() {
             >
               Vender
             </Link>
+
+            {/* Entrar (ou Avatar) — sempre por último */}
+            {!isLoggedIn ? (
+              <Link
+                href="/entrar"
+                className="rounded-full px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                Entrar
+              </Link>
+            ) : (
+              <div className="relative" ref={accountRef}>
+                <button
+                  type="button"
+                  onClick={() => setAccountOpen((v) => !v)}
+                  className="inline-flex items-center gap-2 px-2 py-2 hover:opacity-90 transition"
+                >
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent text-white/80">
+                    {avatarKey ? (
+                      <img
+                        src={`/avatars/${avatarKey}.png`}
+                        alt="Avatar"
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="h-8 w-8 rounded-full bg-white/10 text-white flex items-center justify-center text-sm font-semibold">
+                        {user?.email?.[0]?.toUpperCase() ?? 'U'}
+                      </span>
+                    )}
+                  </span>
+
+                  <span className={`text-white/60 transition-transform ${accountOpen ? 'rotate-180' : ''}`}>
+                    ▾
+                  </span>
+                </button>
+
+                {accountOpen && (
+                  <div
+                    className="
+            absolute right-0 top-full z-50 mt-3 w-56
+            rounded-2xl border border-white/10
+            bg-[#0B0C10]/95 backdrop-blur
+            shadow-2xl
+          "
+                    role="menu"
+                  >
+                    <div className="sunset-line" />
+
+                    <div className="p-2">
+                      <Link
+                        href="/minha-conta"
+                        onClick={() => setAccountOpen(false)}
+                        className="
+                block rounded-xl px-3 py-2 text-sm
+                text-white/85 hover:text-white
+                hover:bg-white/10 transition
+              "
+                        role="menuitem"
+                      >
+                        Minha conta
+                      </Link>
+
+                      <Link
+                        href="/configuracoes"
+                        onClick={() => setAccountOpen(false)}
+                        className="
+                block rounded-xl px-3 py-2 text-sm
+                text-white/85 hover:text-white
+                hover:bg-white/10 transition
+              "
+                        role="menuitem"
+                      >
+                        Configurações
+                      </Link>
+
+                      <div className="my-2 h-px bg-white/10" />
+
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="
+                w-full text-left rounded-xl px-3 py-2 text-sm
+                text-rose-200 hover:text-white
+                hover:bg-white/10 transition
+              "
+                        role="menuitem"
+                      >
+                        Sair
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
         </div>
 
@@ -300,9 +417,8 @@ export function SiteHeader() {
                 'rounded-full px-6 py-2 text-sm font-semibold',
                 'text-[#0B0C10]',
                 'bg-gradient-to-r from-orange-400 to-orange-500',
-                'shadow-[0_10px_26px_rgba(249,115,22,.35)]',
                 'hover:from-orange-500 hover:to-orange-600',
-                'hover:brightness-[1.02] transition',
+                'transition-colors',
               ].join(' ')}
             >
               Venda suas Cartas!
