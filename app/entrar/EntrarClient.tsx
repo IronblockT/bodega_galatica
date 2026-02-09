@@ -100,8 +100,8 @@ export default function EntrarClient() {
   }
 
   return (
-    <main className="min-h-screen bg-sand">
-      <section className="mx-auto max-w-md px-4 py-14">
+    <main className="min-h-screen bg-[#F6F0E6] flex flex-col">
+      <section className="mx-auto max-w-md px-4 py-14 flex-1">
         <div className="rounded-3xl border border-black/10 bg-white/70 backdrop-blur p-8 shadow-[0_18px_50px_rgba(0,0,0,.08)]">
           <h1 className="text-3xl font-semibold tracking-tight text-black">
             {mode === 'login' ? 'Entrar' : mode === 'signup' ? 'Criar conta' : 'Redefinir senha'}
@@ -111,8 +111,8 @@ export default function EntrarClient() {
             {mode === 'login'
               ? 'Acesse sua conta para comprar e vender cartas.'
               : mode === 'signup'
-              ? 'Crie sua conta para começar a negociar na Bodega Galáctica.'
-              : 'Vamos te enviar um link por email para redefinir sua senha.'}
+                ? 'Crie sua conta para começar a negociar na Bodega Galáctica.'
+                : 'Vamos te enviar um link por email para redefinir sua senha.'}
           </p>
 
           {mode !== 'reset' && (
@@ -220,13 +220,13 @@ export default function EntrarClient() {
                 ? mode === 'login'
                   ? 'Entrando...'
                   : mode === 'signup'
-                  ? 'Criando...'
-                  : 'Enviando...'
+                    ? 'Criando...'
+                    : 'Enviando...'
                 : mode === 'login'
-                ? 'Entrar'
-                : mode === 'signup'
-                ? 'Criar conta'
-                : 'Enviar link'}
+                  ? 'Entrar'
+                  : mode === 'signup'
+                    ? 'Criar conta'
+                    : 'Enviar link'}
             </button>
 
             <div className="pt-2 text-center text-sm text-black/60">
@@ -280,8 +280,10 @@ export default function EntrarClient() {
           </form>
         </div>
       </section>
-
-      <SiteFooter />
+      
+      <div className="mt-auto">
+        <SiteFooter />
+      </div>
     </main>
   );
 }

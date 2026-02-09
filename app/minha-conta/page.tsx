@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { SiteHeader } from '@/components/layout/SiteHeader';
 import { SiteFooter } from '@/components/layout/SiteFooter';
 import { useAuth } from '@/components/hooks/useAuth';
 import { supabase } from '@/lib/supabaseClient';
+
+import { AvatarPicker } from '@/components/account/AvatarPicker';
+import { ProfileForm } from '@/components/account/ProfileForm';
+import { AddressForm } from '@/components/account/AddressForm';
 
 type ProfileRow = {
   id: string;
@@ -35,18 +38,16 @@ function onlyDigits(v: string) {
   return (v || '').replace(/\D/g, '');
 }
 
-// === classes copiadas do padrão CardSearchFilters / CardResultRow ===
 const panelClass = 'rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur';
 const titleClass = 'mb-4 text-sm font-semibold uppercase tracking-wide text-white/70';
-const labelClass = 'mb-1 block text-xs text-white/60';
-const inputClass =
-  'w-full rounded-md border border-white/10 bg-black px-3 py-2 text-sm text-white outline-none focus:border-white/30';
+const topSecondaryBtn =
+  'rounded-full border border-black/15 bg-white px-4 py-2 text-xs font-semibold text-black/80 shadow-sm hover:bg-black hover:text-white transition-colors';
+
+const topDangerBtn =
+  'rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-colors';
 
 const secondaryBtn =
   'rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors';
-
-const primaryBtn =
-  'rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-[#0B0C10] hover:bg-orange-600 transition-colors disabled:opacity-40';
 
 export default function MinhaContaPage() {
   const router = useRouter();
@@ -69,7 +70,7 @@ export default function MinhaContaPage() {
     if (!isLoggedIn) router.replace('/entrar?next=/minha-conta');
   }, [isLoggedIn, router]);
 
-  // Carregar dados
+  // Load
   useEffect(() => {
     let mounted = true;
 
@@ -139,28 +140,30 @@ export default function MinhaContaPage() {
     };
   }, [user?.id, user?.email]);
 
-  async function handleSaveProfile(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user?.id || !profile) return;
+  // ✅ Centraliza o "payload builder" do perfil
+  const buildProfilePayload = useCallback(() => {
+    if (!user?.id || !profile) return null;
 
-    setSavingProfile(true);
-    setErrorMsg(null);
-    setOkMsg(null);
-
-    const payload = {
+    return {
       id: user.id,
       email: email,
       full_name: profile.full_name?.trim() || null,
       phone: profile.phone?.trim() || null,
       cpf: profile.cpf ? onlyDigits(profile.cpf) : null,
-
-      // ✅ NOVO: salva o avatar escolhido
       avatar_key: profile.avatar_key ?? null,
     };
+  }, [user?.id, profile, email]);
 
-    const { error } = await supabase
-      .from('profiles')
-      .upsert(payload, { onConflict: 'id' });
+  // ✅ Um único método de salvar perfil (serve pro form e pro avatar)
+  const saveProfile = useCallback(async (opts?: { updateHeaderAvatar?: boolean; successMsg?: string }) => {
+    const payload = buildProfilePayload();
+    if (!payload) return;
+
+    setSavingProfile(true);
+    setErrorMsg(null);
+    setOkMsg(null);
+
+    const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
 
     setSavingProfile(false);
 
@@ -169,9 +172,21 @@ export default function MinhaContaPage() {
       return;
     }
 
-    setOkMsg('Perfil atualizado com sucesso.');
+    if (opts?.updateHeaderAvatar) {
+      setAvatarKeyLocal(payload.avatar_key ?? null);
+    }
+
+    setOkMsg(opts?.successMsg ?? 'Perfil atualizado com sucesso.');
+  }, [buildProfilePayload, setAvatarKeyLocal]);
+
+  async function handleSaveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    await saveProfile({ updateHeaderAvatar: true, successMsg: 'Perfil atualizado com sucesso.' });
   }
 
+  async function handleSaveAvatar() {
+    await saveProfile({ updateHeaderAvatar: true, successMsg: 'Avatar atualizado com sucesso.' });
+  }
 
   async function handleSaveAddress(e: React.FormEvent) {
     e.preventDefault();
@@ -234,31 +249,28 @@ export default function MinhaContaPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_10%,rgba(249,115,22,0.12),transparent_60%)]" />
 
       <div className="relative z-10">
-
         <section className="mx-auto max-w-6xl px-4 py-10">
-          {/* TOP BAR — fora da box escura (no fundo claro) */}
+          {/* TOP BAR */}
           <div className="mb-10">
             <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-black">
               Minha Conta
             </h1>
 
             <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <p className="text-lg text-black/65">
-                Perfil, endereço e segurança.
-              </p>
+              <p className="text-lg text-black/65">Perfil, endereço e segurança.</p>
 
               <div className="flex gap-2">
-                <Link href="/" className={secondaryBtn}>
+                <Link href="/" className={topSecondaryBtn}>
                   Voltar
                 </Link>
-                <button onClick={handleLogout} className={secondaryBtn}>
+                <button onClick={handleLogout} className={topDangerBtn}>
                   Sair
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Envelope dark: só conteúdo */}
+          {/* Envelope dark */}
           <div className="rounded-2xl border border-white/10 bg-[#0B0C10] p-6 md:p-8">
             {(errorMsg || okMsg) && (
               <div className="mb-6 space-y-2">
@@ -283,11 +295,8 @@ export default function MinhaContaPage() {
                 <div className="space-y-6">
                   <div className={panelClass}>
                     <h2 className={titleClass}>Conta</h2>
-
                     <div className="text-xs text-white/60">Email</div>
-                    <div className="mt-1 text-sm font-semibold text-white">
-                      {email ?? '—'}
-                    </div>
+                    <div className="mt-1 text-sm font-semibold text-white">{email ?? '—'}</div>
                   </div>
 
                   <div className={panelClass}>
@@ -296,314 +305,92 @@ export default function MinhaContaPage() {
                       Para alterar sua senha, use o fluxo de redefinição por email.
                     </p>
                     <div className="mt-4">
-                      <Link href="/entrar" className={secondaryBtn}>
+                      <Link href="/redefinir-senha" className={secondaryBtn}>
                         Redefinir senha
                       </Link>
                     </div>
                   </div>
-                  <div className={panelClass}>
-                    <h2 className={titleClass}>Avatar</h2>
-                    <p className="text-xs text-white/70">
-                      Escolha uma raça para representar seu perfil na Bodega Galáctica.
-                    </p>
 
-                    <div className="mt-4 grid grid-cols-1 gap-3">
-                      {[
-                        {
-                          key: 'arelian',
-                          name: 'Arelians',
-                          style: 'Aggro tático com controle leve',
-                          why:
-                            'Pressiona cedo com sinergias rápidas e remoções eficientes — no deserto, quem reage tarde não sobrevive.',
-                        },
-                        {
-                          key: 'lumari',
-                          name: 'Lúmari',
-                          style: 'Controle e value ao longo do tempo',
-                          why:
-                            'Prefere jogos longos e respostas reativas, acumulando vantagem — quem controla o ritmo controla o desfecho.',
-                        },
-                        {
-                          key: 'kharzun',
-                          name: 'Kharzun',
-                          style: 'Aggro explosivo e pressão constante',
-                          why:
-                            'Quer finalizar rápido com dano direto e trocas favoráveis — hesitação no deserto é sentença de morte.',
-                        },
-                        {
-                          key: 'varkai',
-                          name: 'Varkai',
-                          style: 'Midrange técnico e vantagem incremental',
-                          why:
-                            'Adapta-se ao oponente com valor e eficiência — quem reutiliza sucata vence no longo prazo.',
-                        },
-                        {
-                          key: 'sahrikaan',
-                          name: "Sahri’Kaan",
-                          style: 'Midrange pesado com liderança e buffs',
-                          why:
-                            'Estabelece presença e escala com o tempo — quem lidera com firmeza não precisa correr riscos.',
-                        },
-                      ].map((a) => {
-                        const selected = profile?.avatar_key === a.key;
-
-                        return (
-                          <button
-                            key={a.key}
-                            type="button"
-                            onClick={() => setProfile((p) => (p ? ({ ...p, avatar_key: a.key } as any) : p))}
-                            className={[
-                              'group w-full rounded-xl border p-3 text-left transition',
-                              'border-white/10 bg-black/50 hover:bg-black/60',
-                              selected ? 'outline outline-1 outline-orange-400/60' : '',
-                            ].join(' ')}
-                          >
-                            <div className="flex items-start gap-3">
-                              {/* Preview do avatar (imagem) */}
-                              <div className="relative">
-                                <div className="h-12 w-12 rounded-lg border border-white/10 bg-black">
-                                  <img
-                                    src={`/avatars/${a.key}.png`}
-                                    alt={a.name}
-                                    className="h-full w-full object-cover"
-                                  />
-                                </div>
-
-                                {/* Zoom no hover (não quebra o layout) */}
-                                <div
-                                  className="
-      pointer-events-none
-      absolute left-0 top-0
-      opacity-0
-      transition-opacity duration-200
-      group-hover:opacity-100
-      z-50
-    "
-                                >
-                                  <div className="mt-[-30px] ml-[70px] h-64 w-64 rounded-3xl border border-white/10 bg-black shadow-[0_40px_120px_rgba(0,0,0,.8)]">
-                                    <img
-                                      src={`/avatars/${a.key}.png`}
-                                      alt={a.name}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="text-sm font-semibold text-white">{a.name}</div>
-                                  {selected && (
-                                    <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-[#0B0C10]">
-                                      Selecionado
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="mt-1 text-xs text-white/70">{a.style}</div>
-                                <div className="mt-1 text-xs text-white/55">{a.why}</div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-4 flex justify-end">
-                      <button
-                        type="button"
-                        disabled={savingProfile}
-                        onClick={async () => {
-                          if (!user?.id || !profile) return;
-
-                          setSavingProfile(true);
-                          setErrorMsg(null);
-                          setOkMsg(null);
-
-                          const avatarKey = (profile as any).avatar_key ?? null;
-
-                          const payload = {
-                            id: user.id,
-                            email: email,
-                            full_name: profile.full_name?.trim() || null,
-                            phone: profile.phone?.trim() || null,
-                            cpf: profile.cpf ? onlyDigits(profile.cpf) : null,
-                            avatar_key: avatarKey,
-                          };
-
-                          const { error } = await supabase
-                            .from('profiles')
-                            .upsert(payload, { onConflict: 'id' });
-
-                          setSavingProfile(false);
-
-                          if (error) {
-                            setErrorMsg(`Não foi possível salvar o avatar: ${error.message}`);
-                            return;
-                          }
-
-                          // ✅ Atualiza o Header imediatamente
-                          setAvatarKeyLocal(avatarKey);
-
-                          setOkMsg('Avatar atualizado com sucesso.');
-                        }}
-                        className={primaryBtn}
-                      >
-                        {savingProfile ? 'Salvando…' : 'Salvar avatar'}
-                      </button>
-                    </div>
-                  </div>
+                  <AvatarPicker
+                    selectedKey={profile?.avatar_key ?? null}
+                    onSelect={(key) => setProfile((p) => (p ? { ...p, avatar_key: key } : p))}
+                    onSave={handleSaveAvatar}
+                    saving={savingProfile}
+                  />
                 </div>
 
                 {/* Coluna direita */}
                 <div className="space-y-6 lg:col-span-2">
+                  <ProfileForm
+                    profile={profile}
+                    setProfile={setProfile}
+                    onSave={handleSaveProfile}
+                    saving={savingProfile}
+                  />
+
+                  {user?.id && (
+                    <AddressForm
+                      userId={user.id}
+                      address={address}
+                      setAddress={setAddress}
+                      onSave={handleSaveAddress}
+                      saving={savingAddress}
+                    />
+                  )}
                   <div className={panelClass}>
-                    <h2 className={titleClass}>Dados pessoais</h2>
+                    <h2 className={titleClass}>Meus pedidos</h2>
 
-                    <form onSubmit={handleSaveProfile} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="md:col-span-2">
-                        <label className={labelClass}>Nome completo</label>
-                        <input
-                          className={inputClass}
-                          value={profile?.full_name ?? ''}
-                          onChange={(e) =>
-                            setProfile((p) => (p ? { ...p, full_name: e.target.value } : p))
-                          }
-                          placeholder="Seu nome"
-                        />
+                    <p className="text-xs text-white/70">
+                      Em breve você poderá acompanhar aqui seus pedidos de{' '}
+                      <span className="font-semibold text-white/85">compra</span> e{' '}
+                      <span className="font-semibold text-white/85">venda</span>, com histórico,
+                      status e detalhes de cada transação.
+                    </p>
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {/* COMPRAS */}
+                      <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                        <div className="text-xs text-white/60">Compras</div>
+                        <div className="mt-1 text-sm font-semibold text-white">0 pedidos</div>
+
+                        <div className="mt-2 text-xs text-white/55">
+                          Você ainda não fez nenhuma compra na Bodega.
+                        </div>
+
+                        <div className="mt-4">
+                          <Link href="/meus-pedidos?tipo=compras" className={secondaryBtn}>
+                            Acompanhar pedidos
+                          </Link>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className={labelClass}>Telefone / WhatsApp</label>
-                        <input
-                          className={inputClass}
-                          value={profile?.phone ?? ''}
-                          onChange={(e) =>
-                            setProfile((p) => (p ? { ...p, phone: e.target.value } : p))
-                          }
-                          placeholder="(11) 99999-9999"
-                        />
-                      </div>
+                      {/* VENDAS */}
+                      <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+                        <div className="text-xs text-white/60">Vendas</div>
+                        <div className="mt-1 text-sm font-semibold text-white">0 pedidos</div>
 
-                      <div>
-                        <label className={labelClass}>CPF (opcional)</label>
-                        <input
-                          className={inputClass}
-                          value={profile?.cpf ?? ''}
-                          onChange={(e) =>
-                            setProfile((p) => (p ? { ...p, cpf: e.target.value } : p))
-                          }
-                          placeholder="000.000.000-00"
-                        />
-                      </div>
+                        <div className="mt-2 text-xs text-white/55">
+                          Você ainda não realizou nenhuma venda.
+                        </div>
 
-                      <div className="md:col-span-2 mt-2 flex justify-end">
-                        <button type="submit" disabled={savingProfile} className={primaryBtn}>
-                          {savingProfile ? 'Salvando…' : 'Salvar'}
-                        </button>
+                        <div className="mt-4">
+                          <Link href="/meus-pedidos?tipo=vendas" className={secondaryBtn}>
+                            Acompanhar pedidos
+                          </Link>
+                        </div>
                       </div>
-                    </form>
-                  </div>
+                    </div>
 
-                  <div className={panelClass}>
-                    <h2 className={titleClass}>Endereço principal</h2>
+                    <div className="mt-5 flex justify-end">
+                      <Link href="/meus-pedidos" className={secondaryBtn}>
+                        Ver histórico
+                      </Link>
+                    </div>
 
-                    <form onSubmit={handleSaveAddress} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div>
-                        <label className={labelClass}>CEP</label>
-                        <input
-                          className={inputClass}
-                          value={address?.cep ?? ''}
-                          onChange={(e) =>
-                            setAddress((a) =>
-                              a
-                                ? { ...a, cep: e.target.value }
-                                : ({
-                                  id: '',
-                                  user_id: user?.id ?? '',
-                                  label: 'Principal',
-                                  is_default: true,
-                                  cep: e.target.value,
-                                  street: '',
-                                  number: '',
-                                  complement: '',
-                                  district: '',
-                                  city: '',
-                                  state: '',
-                                } as AddressRow)
-                            )
-                          }
-                          placeholder="00000-000"
-                        />
-                      </div>
-
-                      <div>
-                        <label className={labelClass}>UF</label>
-                        <input
-                          className={inputClass}
-                          value={address?.state ?? ''}
-                          onChange={(e) => setAddress((a) => (a ? { ...a, state: e.target.value } : a))}
-                          placeholder="SP"
-                          maxLength={2}
-                        />
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <label className={labelClass}>Rua</label>
-                        <input
-                          className={inputClass}
-                          value={address?.street ?? ''}
-                          onChange={(e) => setAddress((a) => (a ? { ...a, street: e.target.value } : a))}
-                          placeholder="Rua Exemplo"
-                        />
-                      </div>
-
-                      <div>
-                        <label className={labelClass}>Número</label>
-                        <input
-                          className={inputClass}
-                          value={address?.number ?? ''}
-                          onChange={(e) => setAddress((a) => (a ? { ...a, number: e.target.value } : a))}
-                          placeholder="123"
-                        />
-                      </div>
-
-                      <div>
-                        <label className={labelClass}>Complemento</label>
-                        <input
-                          className={inputClass}
-                          value={address?.complement ?? ''}
-                          onChange={(e) => setAddress((a) => (a ? { ...a, complement: e.target.value } : a))}
-                          placeholder="Apto 45"
-                        />
-                      </div>
-
-                      <div>
-                        <label className={labelClass}>Bairro</label>
-                        <input
-                          className={inputClass}
-                          value={address?.district ?? ''}
-                          onChange={(e) => setAddress((a) => (a ? { ...a, district: e.target.value } : a))}
-                          placeholder="Centro"
-                        />
-                      </div>
-
-                      <div>
-                        <label className={labelClass}>Cidade</label>
-                        <input
-                          className={inputClass}
-                          value={address?.city ?? ''}
-                          onChange={(e) => setAddress((a) => (a ? { ...a, city: e.target.value } : a))}
-                          placeholder="São Paulo"
-                        />
-                      </div>
-
-                      <div className="md:col-span-2 mt-2 flex justify-end">
-                        <button type="submit" disabled={savingAddress} className={primaryBtn}>
-                          {savingAddress ? 'Salvando…' : 'Salvar'}
-                        </button>
-                      </div>
-                    </form>
+                    <div className="mt-3 text-[11px] text-white/45">
+                      * A área de “Meus pedidos” está em construção.
+                      Em breve: status, histórico completo, comprovantes e detalhes.
+                    </div>
                   </div>
                 </div>
               </div>

@@ -86,9 +86,9 @@ export default function RedefinirSenhaPage() {
   }
 
   return (
-    <main className="min-h-screen bg-sand">
+    <main className="min-h-screen bg-[#F6F0E6] flex flex-col">
 
-      <section className="mx-auto max-w-md px-4 py-14">
+      <section className="mx-auto max-w-md px-4 py-14 flex-1">
         <div className="rounded-3xl border border-black/10 bg-white/70 backdrop-blur p-8 shadow-[0_18px_50px_rgba(0,0,0,.08)]">
           <h1 className="text-3xl font-semibold tracking-tight text-black">Redefinir senha</h1>
           <p className="mt-2 text-black/60">
@@ -172,7 +172,9 @@ export default function RedefinirSenhaPage() {
         </div>
       </section>
 
-      <SiteFooter />
+      <div className="mt-auto">
+        <SiteFooter />
+      </div>
     </main>
   );
 }
