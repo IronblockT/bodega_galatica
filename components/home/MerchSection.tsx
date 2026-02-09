@@ -43,7 +43,7 @@ function formatBRL(v: number) {
 
 export function MerchSection() {
   return (
-    <section className="relative bg-sand">
+    <section className="relative overflow-hidden bg-sand">
       {/* glow quente Tatooine */}
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-orange-400/10 blur-3xl" />
 

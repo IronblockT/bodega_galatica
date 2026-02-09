@@ -74,7 +74,7 @@ function formatBRL(v: number) {
 
 export function Bounties() {
   return (
-    <section className="relative bg-sand">
+    <section className="relative overflow-hidden bg-sand">
       {/* leve “sol” Tatooine no fundo */}
       <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-orange-400/10 blur-3xl" />
 

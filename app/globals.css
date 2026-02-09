@@ -4,20 +4,28 @@
 
 :root {
   /* Tatooine / Premium palette */
-  --bg: 248 246 242;           /* areia clara */
+  --bg: 248 246 242;
+  /* areia clara */
   --card: 255 255 255;
   --text: 20 20 24;
   --muted: 110 110 120;
 
-  --brand-sand: 236 214 170;   /* areia quente */
-  --brand-amber: 245 158 11;   /* amber */
-  --brand-sunset: 251 113 133; /* rose */
-  --brand-night: 9 10 12;      /* quase preto */
-  --brand-ink: 22 24 28;       /* carvão premium */
+  --brand-sand: 236 214 170;
+  /* areia quente */
+  --brand-amber: 245 158 11;
+  /* amber */
+  --brand-sunset: 251 113 133;
+  /* rose */
+  --brand-night: 9 10 12;
+  /* quase preto */
+  --brand-ink: 22 24 28;
+  /* carvão premium */
 }
 
-html, body {
-  height: 100%;
+html,
+body {
+  width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -32,17 +40,15 @@ body {
 
 .shadow-premium {
   box-shadow:
-    0 10px 30px rgba(0,0,0,.10),
-    0 1px 0 rgba(255,255,255,.06) inset;
+    0 10px 30px rgba(0, 0, 0, .10),
+    0 1px 0 rgba(255, 255, 255, .06) inset;
 }
 
 .sunset-line {
-  background: linear-gradient(
-    90deg,
-    rgba(245, 158, 11, .0),
-    rgba(245, 158, 11, .9),
-    rgba(251, 113, 133, .9),
-    rgba(245, 158, 11, .0)
-  );
+  background: linear-gradient(90deg,
+      rgba(245, 158, 11, .0),
+      rgba(245, 158, 11, .9),
+      rgba(251, 113, 133, .9),
+      rgba(245, 158, 11, .0));
   height: 2px;
 }

@@ -1,6 +1,6 @@
 export function Hero() {
   return (
-    <section className="relative bg-sand">
+    <section className="relative overflow-hidden bg-sand">
       {/* fundo sutil */}
       <div className="absolute inset-0 bg-gradient-to-b from-white via-transparent to-transparent" />
 

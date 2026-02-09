@@ -13,7 +13,7 @@ export default function Home() {
     <main className="min-h-screen bg-sand">
       
       {/* HERO — TATOOINE */}
-      <section className="relative bg-sand">
+      <section className="relative overflow-hidden bg-sand">
         {/* céu / horizonte */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#FFF3E0] via-[#FDE7C7] to-[#F7E7CF]" />
 
