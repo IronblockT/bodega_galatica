@@ -1,30 +1,76 @@
-// components/cards/CardResultRow.tsx
 "use client";
 
 import { useState } from "react";
 import { ConditionSelector } from "./ConditionSelector";
 import { QuantitySelector } from "./QuantitySelector";
+import Link from "next/link";
+
+function getTypeLabel(v: any): string {
+  if (!v) return "—";
+  if (typeof v === "string") return v;
+
+  // relation Strapi: { data: { attributes: { name } } }
+  const name1 = v?.data?.attributes?.name;
+  if (typeof name1 === "string" && name1.trim()) return name1.trim();
+
+  // outros fallbacks
+  const name2 = v?.attributes?.name;
+  if (typeof name2 === "string" && name2.trim()) return name2.trim();
+
+  const name3 = v?.name;
+  if (typeof name3 === "string" && name3.trim()) return name3.trim();
+
+  return "—";
+}
 
 export function CardResultRow({ card }: any) {
   const [condition, setCondition] = useState(card.recommendedCondition);
-  const variant = card.variants[condition];
+  const variant = card.variants?.[condition] ?? { price: 0, stock: 0 };
+
+  const typeLabel = getTypeLabel(card.type);
+
+  const isHorizontal =
+    card.type === "Leader" || card.type === "Base";
 
   return (
     <div className="flex gap-4 rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur">
-      {/* Imagem */}
+      {/* Imagem (clicável) */}
       <div className="flex-shrink-0">
-        <div className="relative h-48 w-36 md:h-56 md:w-40 rounded-xl bg-white/5 border border-white/10">
-          {/* Quando ligar imagem real, entra o <Image /> aqui */}
-        </div>
+        <Link href={`/cartas/${card.id}`} className="block">
+          <div className="relative h-48 w-36 md:h-56 md:w-40 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center">
+            {card.image ? (
+              <img
+                src={card.image}
+                alt={card.name}
+                className={[
+                  "max-h-full max-w-full",
+                  isHorizontal ? "object-contain p-2" : "object-cover",
+                ].join(" ")}
+                loading="lazy"
+              />
+            ) : null}
+          </div>
+        </Link>
       </div>
 
       {/* Info */}
       <div className="flex flex-1 flex-col justify-between">
         <div>
-          <h3 className="text-white font-semibold">{card.name}</h3>
+          <h3 className="text-white font-semibold">
+            <Link href={`/cartas/${card.id}`} className="hover:underline">
+              {card.name}
+            </Link>
+          </h3>
+
           <p className="text-xs text-white/60">
-            {card.type} • {card.set}
+            {typeLabel} • {card.set}
           </p>
+
+          {card.rules_text ? (
+            <p className="mt-2 text-sm text-white/70 line-clamp-2">
+              {card.rules_text}
+            </p>
+          ) : null}
         </div>
 
         <ConditionSelector
@@ -37,17 +83,17 @@ export function CardResultRow({ card }: any) {
       {/* Compra */}
       <div className="w-44 text-right">
         <div className="text-xl font-semibold text-white">
-          R$ {variant.price.toFixed(2)}
+          R$ {Number(variant.price || 0).toFixed(2)}
         </div>
 
         <p className="text-xs text-white/60 mb-2">
-          {variant.stock} em estoque
+          {variant.stock ?? 0} em estoque
         </p>
 
-        <QuantitySelector max={variant.stock} />
+        <QuantitySelector max={variant.stock ?? 0} />
 
         <button
-          disabled={variant.stock === 0}
+          disabled={(variant.stock ?? 0) === 0}
           className={[
             "mt-2 w-full rounded-full px-4 py-2 text-xs font-semibold",
             "text-[#0B0C10]",
