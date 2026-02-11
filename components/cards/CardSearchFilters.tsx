@@ -25,12 +25,12 @@ const primaryBtn =
   "flex-1 rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-[#0B0C10] hover:bg-orange-600 transition-colors";
 
 const ASPECTS = [
-  { key: "Aggression", label: "Aggression", icon: "/aspects/aggression.png" },
-  { key: "Vigilance", label: "Vigilance", icon: "/aspects/vigilance.png" },
-  { key: "Command", label: "Command", icon: "/aspects/command.png" },
-  { key: "Cunning", label: "Cunning", icon: "/aspects/cunning.png" },
-  { key: "Heroism", label: "Heroism", icon: "/aspects/heroism.png" },
-  { key: "Villainy", label: "Villainy", icon: "/aspects/villainy.png" },
+  { key: "Aggression", label: "Aggression", icon: "/aspects/Aggression.png" },
+  { key: "Vigilance", label: "Vigilance", icon: "/aspects/Vigilance.png" },
+  { key: "Command", label: "Command", icon: "/aspects/Command.png" },
+  { key: "Cunning", label: "Cunning", icon: "/aspects/Cunning.png" },
+  { key: "Heroism", label: "Heroism", icon: "/aspects/Heroism.png" },
+  { key: "Villainy", label: "Villainy", icon: "/aspects/Villainy.png" },
 ];
 
 const CARD_TYPES = [
