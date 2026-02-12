@@ -59,12 +59,12 @@ function pillClass() {
 
 function aspectIcon(aspect: string) {
   const m: Record<string, string> = {
-    Aggression: "/aspects/aggression.png",
-    Vigilance: "/aspects/vigilance.png",
-    Command: "/aspects/command.png",
-    Cunning: "/aspects/cunning.png",
-    Heroism: "/aspects/heroism.png",
-    Villainy: "/aspects/villainy.png",
+    Aggression: "/aspects/Aggression.png",
+    Vigilance: "/aspects/Vigilance.png",
+    Command: "/aspects/Command.png",
+    Cunning: "/aspects/Cunning.png",
+    Heroism: "/aspects/Heroism.png",
+    Villainy: "/aspects/Villainy.png",
   };
   return m[aspect] ?? null;
 }
