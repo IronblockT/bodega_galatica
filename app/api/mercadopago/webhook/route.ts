@@ -18,7 +18,8 @@ function verifyMpSignature(req: Request, rawBody: string, paymentId: string) {
   const xSignature = req.headers.get("x-signature") ?? "";
   const xRequestId = req.headers.get("x-request-id") ?? "";
 
-  if (!xSignature) return false;
+  // ✅ agora exigimos request-id também
+  if (!xSignature || !xRequestId || !paymentId) return false;
 
   const { ts, v1 } = parseXSignature(xSignature);
   if (!ts || !v1) return false;
@@ -116,9 +117,85 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true });
   }
 
+  const providerPaymentId = String(payment.id);
+  const providerPaymentStatus = String(payment.status ?? "");
+  const providerPaymentUpdatedAt =
+    payment.date_last_updated || payment.date_approved || payment.date_created || null;
+
   // 5) atualizar Supabase conforme status
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+
+  const sb = async (path: string, init: RequestInit) => {
+    const res = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      ...init,
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      },
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Supabase error ${res.status}: ${t}`);
+    }
+    return res;
+  };
+
+  // tenta achar payment row pelo provider_payment_id
+  const q = `payments?select=id,order_id,provider_payment_status,provider_payment_updated_at`
+    + `&provider=eq.mercadopago`
+    + `&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}`
+    + `&limit=1`;
+
+  const existingRes = await sb(q, { method: "GET" });
+  const existing = (await existingRes.json()) as any[];
+  const existingRow = existing?.[0];
+
+  // Se já existe e status + updated_at são iguais => já processamos este evento
+  if (
+    existingRow &&
+    String(existingRow.provider_payment_status ?? "") === providerPaymentStatus &&
+    String(existingRow.provider_payment_updated_at ?? "") === String(providerPaymentUpdatedAt ?? "")
+  ) {
+    return NextResponse.json({ received: true, idempotent: true });
+  }
+
+  // Caso não exista, ou mudou status/updated_at: registra (upsert)
+  // Como temos índice unique(provider, provider_payment_id), dá pra tentar inserir e, se falhar, dar PATCH
+  try {
+    await sb("payments", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({
+        // order_id vem do external_reference (no seu fluxo ele é o orderId)
+        order_id: cartId,
+        provider: "mercadopago",
+        status: providerPaymentStatus === "approved" ? "paid" : "pending",
+        provider_payment_id: providerPaymentId,
+        provider_payment_status: providerPaymentStatus,
+        provider_payment_updated_at: providerPaymentUpdatedAt,
+        provider_payload: payment,
+        amount_brl: payment.transaction_amount ?? null,
+        currency: payment.currency_id ?? "BRL",
+      }),
+    });
+  } catch {
+    // se já existia, atualiza
+    await sb(
+      `payments?provider=eq.mercadopago&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          provider_payment_status: providerPaymentStatus,
+          provider_payment_updated_at: providerPaymentUpdatedAt,
+          provider_payload: payment,
+        }),
+      }
+    );
+  }
 
   const rpc = async (fn: string, body: any) => {
     const r = await fetch(`${supabaseUrl}/rest/v1/rpc/${fn}`, {
