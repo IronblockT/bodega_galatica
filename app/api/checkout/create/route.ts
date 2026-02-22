@@ -71,6 +71,13 @@ export async function POST(req: Request) {
     const appUrl = process.env.APP_URL!;
     const mpAccessToken = process.env.MP_ACCESS_TOKEN!;
 
+    console.log("[checkout/create] env flags", {
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      hasAppUrl: !!process.env.APP_URL,
+      hasMpToken: !!process.env.MP_ACCESS_TOKEN,
+    });
+
     if (!supabaseUrl || !supabaseKey || !appUrl || !mpAccessToken) {
       return NextResponse.json(
         { error: "Env vars ausentes (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/APP_URL/MP_ACCESS_TOKEN)" },
