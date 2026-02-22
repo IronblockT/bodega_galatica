@@ -82,11 +82,15 @@ export async function POST(req: Request) {
   });
 
   if (!okSig) {
+    const sig = req.headers.get("x-signature") ?? "";
+    const maskedSig =
+      sig.length > 20 ? `${sig.slice(0, 12)}...${sig.slice(-8)}` : sig;
+
     console.log("[MP webhook] Invalid signature", {
       hasSecret: !!process.env.MP_WEBHOOK_SECRET,
       paymentId: String(paymentId),
       xRequestId: req.headers.get("x-request-id"),
-      xSignature: req.headers.get("x-signature"),
+      xSignatureMasked: maskedSig,
       bodyLen: rawBody.length,
     });
 
