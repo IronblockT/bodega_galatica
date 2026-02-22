@@ -1,17 +1,25 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function GET() {
-  // sets
+
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnon) {
+    return NextResponse.json(
+      { ok: false, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY" },
+      { status: 500 }
+    );
+  }
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabase = createClient(supabaseUrl, supabaseAnon);
+
   const { data: sets, error: setErr } = await supabase
     .from("swu_expansions")
     .select("code, name")
     .order("code", { ascending: true });
+
 
   if (setErr) return NextResponse.json({ ok: false, error: setErr.message }, { status: 500 });
 

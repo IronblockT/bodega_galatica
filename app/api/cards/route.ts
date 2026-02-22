@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 function toArrayParam(v: string | null) {
   if (!v) return [];
@@ -24,6 +19,19 @@ function toPgArrayLiteral(arr: string[]) {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
+
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnon) {
+    return NextResponse.json(
+      { ok: false, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY" },
+      { status: 500 }
+    );
+  }
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabase = createClient(supabaseUrl, supabaseAnon);
 
   const q = (searchParams.get("q") ?? "").trim();
   const set = searchParams.get("set"); // expansion_code
