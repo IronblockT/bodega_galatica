@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
 type CreateCheckoutBody = {
-  user_id: string; // obrigatório
+  user_id: string;
   items: Array<{ sku_key: string; qty: number }>;
   payer?: { email?: string; name?: string };
+  idempotency_key?: string; // ✅ novo
 };
 
 type InvRow = {
@@ -118,6 +119,35 @@ export async function POST(req: Request) {
       });
     };
 
+    const idem = body.idempotency_key?.trim();
+    if (idem) {
+      // 1) procura order existente com mesmo user + idempotency_key
+      const existingOrderRes = await sb(
+        `orders?select=id,status&user_id=eq.${encodeURIComponent(body.user_id)}&idempotency_key=eq.${encodeURIComponent(idem)}&limit=1`,
+        { method: "GET" }
+      );
+      const existingOrders = (await existingOrderRes.json()) as any[];
+      const existingOrder = existingOrders?.[0];
+
+      if (existingOrder?.id) {
+        // 2) tenta buscar preference já criada pra devolver init_point novamente
+        const existingPayRes = await sb(
+          `payments?select=provider_preference_id,provider_payload&order_id=eq.${existingOrder.id}&provider=eq.mercadopago&limit=1`,
+          { method: "GET" }
+        );
+        const payRows = (await existingPayRes.json()) as any[];
+        const pay = payRows?.[0];
+
+        return NextResponse.json({
+          order_id: existingOrder.id,
+          preference_id: pay?.provider_preference_id ?? null,
+          init_point: pay?.provider_payload?.init_point ?? null,
+          idempotent: true,
+          status: existingOrder.status ?? null,
+        });
+      }
+    }
+
     // 1) Buscar detalhes para calcular preço/total
     const skus = body.items.map((i) => i.sku_key);
     const skuIn = buildInFilter(skus);
@@ -226,6 +256,7 @@ export async function POST(req: Request) {
       method: "POST",
       body: JSON.stringify({
         user_id: body.user_id,
+        idempotency_key: idem ?? null,
         status: "draft",
         subtotal_brl: subtotal,
         shipping_brl: shipping,
