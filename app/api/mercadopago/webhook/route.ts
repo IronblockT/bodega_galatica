@@ -11,29 +11,38 @@ function parseXSignature(xSignature: string) {
   return { ts, v1 };
 }
 
-function verifyMpSignature(req: Request, paymentId: string) {
+function verifyMpSignature(req: Request, rawBody: string, paymentId: string) {
   const secret = process.env.MP_WEBHOOK_SECRET;
-
-  // ✅ Em produção: se não tem secret, NÃO aceita webhook
   if (!secret) return false;
 
   const xSignature = req.headers.get("x-signature") ?? "";
   const xRequestId = req.headers.get("x-request-id") ?? "";
-  if (!xSignature || !xRequestId || !paymentId) return false;
+
+  if (!xSignature) return false;
 
   const { ts, v1 } = parseXSignature(xSignature);
   if (!ts || !v1) return false;
 
-  // ✅ Manifest usado pelo MP (mais comum): id + request-id + ts
+  // Normaliza
+  const received = String(v1).trim().toLowerCase();
+
+  // Formato A (manifest) — muito comum
   const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
+  const computedA = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
 
-  const computed = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
+  // Formato B (raw body) — outro formato comum em webhooks HMAC
+  const baseB = `${ts}.${xRequestId}.${rawBody}`;
+  const computedB = crypto.createHmac("sha256", secret).update(baseB).digest("hex");
 
-  // timing-safe compare
-  const a = Buffer.from(v1, "hex");
-  const b = Buffer.from(computed, "hex");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  // Compare timing-safe (como string)
+  const safeEq = (a: string, b: string) => {
+    const ba = Buffer.from(a, "utf8");
+    const bb = Buffer.from(b, "utf8");
+    if (ba.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ba, bb);
+  };
+
+  return safeEq(received, computedA.toLowerCase()) || safeEq(received, computedB.toLowerCase());
 }
 
 export async function GET() {
@@ -62,8 +71,25 @@ export async function POST(req: Request) {
   }
 
   // ✅ valida assinatura (agora obrigatório)
-  const okSig = verifyMpSignature(req, String(paymentId));
+  const okSig = verifyMpSignature(req, rawBody, String(paymentId));
+
+  console.log("[MP webhook] headers", {
+    hasSecret: !!process.env.MP_WEBHOOK_SECRET,
+    xRequestId: req.headers.get("x-request-id"),
+    xSignature: req.headers.get("x-signature"),
+    paymentId: String(paymentId),
+    bodyLen: rawBody.length,
+  });
+
   if (!okSig) {
+    console.log("[MP webhook] Invalid signature", {
+      hasSecret: !!process.env.MP_WEBHOOK_SECRET,
+      paymentId: String(paymentId),
+      xRequestId: req.headers.get("x-request-id"),
+      xSignature: req.headers.get("x-signature"),
+      bodyLen: rawBody.length,
+    });
+
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
