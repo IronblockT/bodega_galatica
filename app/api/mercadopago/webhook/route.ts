@@ -110,10 +110,11 @@ export async function POST(req: Request) {
   }
 
   const payment = await payRes.json();
-  const status = payment.status; // approved, rejected, pending...
-  const cartId = payment.external_reference; // a gente setou como cartId
 
-  if (!cartId) {
+  const status = String(payment.status ?? "");
+  const orderId = payment.external_reference; // UUID da tabela orders (external_reference)
+
+  if (!orderId) {
     return NextResponse.json({ received: true });
   }
 
@@ -170,8 +171,8 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
       body: JSON.stringify({
-        // order_id vem do external_reference (no seu fluxo ele é o orderId)
-        order_id: cartId,
+        // order_id vem do external_reference (no seu fluxo é o UUID de orders.id)
+        order_id: orderId,
         provider: "mercadopago",
         status: providerPaymentStatus === "approved" ? "paid" : "pending",
         provider_payment_id: providerPaymentId,
@@ -192,12 +193,14 @@ export async function POST(req: Request) {
           provider_payment_status: providerPaymentStatus,
           provider_payment_updated_at: providerPaymentUpdatedAt,
           provider_payload: payment,
+          // opcional: refletir também seu status interno
+          status: providerPaymentStatus === "approved" ? "paid" : "pending",
         }),
       }
     );
   }
 
-  const rpc = async (fn: string, body: any) => {
+  const rpcJson = async (fn: string, body: any) => {
     const r = await fetch(`${supabaseUrl}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: {
@@ -207,35 +210,37 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify(body),
     });
-    if (!r.ok) throw new Error(await r.text());
-    return r;
+    const txt = await r.text().catch(() => "");
+    if (!r.ok) throw new Error(`RPC ${fn} failed: ${txt}`);
+    return txt ? JSON.parse(txt) : null;
   };
 
-  // Exemplo de decisão:
+  // Exemplo de decisão (agora alinhado com orders/checkout):
   if (status === "approved") {
-    // confirma pedido: marca cart como paid + gera order/sales etc via RPC
-    await rpc("finalize_cart_after_payment", {
-      p_cart_id: cartId,
-      p_payment_id: String(payment.id),
-      p_payment_status: status,
-      p_amount: payment.transaction_amount,
-      p_payload: payment,
+    // ✅ Finaliza o pedido + consome reserva
+    await rpcJson("rpc_checkout_commit", {
+      p_order_id: orderId,
+      p_provider: "mercadopago",
+      p_provider_payment_id: String(payment.id),
+      p_amount_brl: payment.transaction_amount,
+      p_provider_payload: payment,
     });
+
   } else if (status === "rejected" || status === "cancelled") {
-    await rpc("release_cart_stock", { p_cart_id: cartId });
-    await rpc("mark_cart_payment_failed", {
-      p_cart_id: cartId,
-      p_payment_id: String(payment.id),
-      p_payment_status: status,
-      p_payload: payment,
+    // ✅ Libera estoque reservado
+    await rpcJson("rpc_checkout_release", { p_order_id: orderId });
+
+    // opcional: marca order como cancelled
+    await sb(`orders?id=eq.${orderId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "cancelled" }),
     });
+
   } else {
-    // pending, in_process etc: apenas salva status
-    await rpc("mark_cart_payment_pending", {
-      p_cart_id: cartId,
-      p_payment_id: String(payment.id),
-      p_payment_status: status,
-      p_payload: payment,
+    // pending, in_process etc: mantém aguardando pagamento (opcional)
+    await sb(`orders?id=eq.${orderId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "awaiting_payment" }),
     });
   }
 
