@@ -25,17 +25,14 @@ export async function GET() {
 
   // types (já limpos da view)
   const { data: typesRows, error: typeErr } = await supabase
-    .from("swu_cards_ui")
-    .select("card_type_label")
-    .not("card_type_label", "is", null);
+    .from("swu_meta_types")
+    .select("card_type_label");
 
   if (typeErr) return NextResponse.json({ ok: false, error: typeErr.message }, { status: 500 });
 
-  // rarities (já limpos da view)
   const { data: rarRows, error: rarErr } = await supabase
-    .from("swu_cards_ui")
-    .select("rarity_label")
-    .not("rarity_label", "is", null);
+    .from("swu_meta_rarities")
+    .select("rarity_label");
 
   if (rarErr) return NextResponse.json({ ok: false, error: rarErr.message }, { status: 500 });
 
@@ -45,10 +42,18 @@ export async function GET() {
   const types = uniq((typesRows ?? []).map((x: any) => x.card_type_label));
   const rarities = uniq((rarRows ?? []).map((x: any) => x.rarity_label));
 
-  return NextResponse.json({
-    ok: true,
-    sets: sets ?? [],
-    types,
-    rarities,
-  });
+  return NextResponse.json(
+    {
+      ok: true,
+      sets: sets ?? [],
+      types,
+      rarities,
+    },
+    {
+      headers: {
+        // 10 min no CDN + serve stale enquanto revalida
+        "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600",
+      },
+    }
+  );
 }

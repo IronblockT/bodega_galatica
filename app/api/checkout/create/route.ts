@@ -381,25 +381,37 @@ export async function POST(req: Request) {
     });
 
     // 6) Registrar payment (se houver CHECK em payments.status e "pending" não valer, troque depois)
-    await sb("payments", {
-      method: "POST",
-      body: JSON.stringify({
-        order_id: orderId,
-        provider: "mercadopago",
-        status: "pending",
-        provider_preference_id: mpPref.id,
-        amount_brl: total,
-        currency: "BRL",
-        provider_payload: mpPref,
-      }),
-    });
+    try {
+      await sb("payments", {
+        method: "POST",
+        body: JSON.stringify({
+          order_id: orderId,
+          provider: "mercadopago",
+          status: "pending",
+          provider_preference_id: mpPref.id,
+          amount_brl: total,
+          currency: "BRL",
+          provider_payload: mpPref,
+        }),
+      });
+    } catch (err: any) {
+      console.log("[checkout/create] payments insert failed (non-fatal)", {
+        orderId,
+        prefId: mpPref.id,
+        message: err?.message ?? String(err),
+      });
+
+      // opcional: marca order com flag/nota (se você tiver campo para isso)
+      // não faz nada além de logar por enquanto
+    }
 
     return NextResponse.json({
       order_id: orderId,
       preference_id: mpPref.id,
       init_point: mpPref.init_point,
-      reserve: reserveParsed.data ?? reserveParsed.raw ?? null, // ajuda debug
+      reserve: reserveParsed.data ?? reserveParsed.raw ?? null,
     });
+    
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Erro interno" }, { status: 500 });
   }
