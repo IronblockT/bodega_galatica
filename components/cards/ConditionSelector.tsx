@@ -30,5 +30,3 @@ export function ConditionSelector({ variants, value, onChange }: any) {
     </div>
   );
 }
-
-

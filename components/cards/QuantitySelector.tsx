@@ -43,4 +43,3 @@ export function QuantitySelector({ max }: { max: number }) {
     </div>
   );
 }
-

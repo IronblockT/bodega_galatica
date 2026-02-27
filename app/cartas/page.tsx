@@ -1,4 +1,4 @@
-// app/cards/page.tsx
+// app/cartas/page.tsx
 import { Suspense } from "react";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { BackToTop } from "@/components/layout/BackToTop";

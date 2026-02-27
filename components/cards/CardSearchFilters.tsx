@@ -1,3 +1,5 @@
+//CardSearchFilters
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -170,6 +172,15 @@ export function CardSearchFilters() {
     router.push(`${pathname}?${params.toString()}`);
   }
 
+  function setParam(key: string, value?: string | null) {
+    const sp = new URLSearchParams(searchParams?.toString() || "");
+    if (!value) sp.delete(key);
+    else sp.set(key, value);
+    // ✅ sempre volta pra página 1 quando muda filtro
+    sp.set("page", "1");
+    router.replace(`${pathname}?${sp.toString()}`);
+  }
+
   return (
     <div className="sticky top-24 rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur">
       <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-white/70">
@@ -332,12 +343,16 @@ export function CardSearchFilters() {
         </p>
       </div>
 
-      {/* Em estoque (placeholder) */}
+      {/* Em estoque */}
       <div className="mb-4 flex items-center gap-2">
         <input
           type="checkbox"
           checked={inStock}
-          onChange={(e) => setInStock(e.target.checked)}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            setInStock(checked);
+            setParam("stock", checked ? "1" : null); // ✅ envia stock=1
+          }}
         />
         <span className="text-xs text-white/70">Somente em estoque</span>
       </div>

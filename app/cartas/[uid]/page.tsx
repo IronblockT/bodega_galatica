@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { SiteFooter } from "@/components/layout/SiteFooter";
+import { BackButton } from "@/components/cards/BackButton";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -101,10 +102,7 @@ async function getCard(uid: string): Promise<CardUI | null> {
     .eq("card_uid", uid)
     .maybeSingle();
 
-  if (error) {
-    // você pode logar se quiser, mas não explodimos a UI
-    return null;
-  }
+  if (error) return null;
   return (data as any) ?? null;
 }
 
@@ -155,12 +153,7 @@ export default async function CardDetailPage({
           </div>
 
           <div className="flex gap-2">
-            <Link
-              href="/cartas"
-              className="rounded-full border border-black/15 bg-white/70 px-4 py-2 text-xs font-semibold text-black/80 hover:bg-white transition-colors"
-            >
-              Voltar
-            </Link>
+            <BackButton fallbackHref="/cartas" />
           </div>
         </div>
 
@@ -277,27 +270,21 @@ export default async function CardDetailPage({
               </div>
 
               {/* Stats */}
-              {(card.cost !== null || card.power !== null || card.hp !== null) ? (
+              {card.cost !== null || card.power !== null || card.hp !== null ? (
                 <div className="rounded-2xl border border-white/10 bg-black/60 p-4 backdrop-blur">
                   <div className="text-sm font-semibold text-white/80 mb-3">Atributos</div>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-xl border border-white/10 bg-black/40 p-3">
                       <div className="text-xs text-white/50">Custo</div>
-                      <div className="mt-1 text-lg font-semibold text-white">
-                        {card.cost ?? "—"}
-                      </div>
+                      <div className="mt-1 text-lg font-semibold text-white">{card.cost ?? "—"}</div>
                     </div>
                     <div className="rounded-xl border border-white/10 bg-black/40 p-3">
                       <div className="text-xs text-white/50">Power</div>
-                      <div className="mt-1 text-lg font-semibold text-white">
-                        {card.power ?? "—"}
-                      </div>
+                      <div className="mt-1 text-lg font-semibold text-white">{card.power ?? "—"}</div>
                     </div>
                     <div className="rounded-xl border border-white/10 bg-black/40 p-3">
                       <div className="text-xs text-white/50">HP</div>
-                      <div className="mt-1 text-lg font-semibold text-white">
-                        {card.hp ?? "—"}
-                      </div>
+                      <div className="mt-1 text-lg font-semibold text-white">{card.hp ?? "—"}</div>
                     </div>
                   </div>
                 </div>
@@ -315,23 +302,19 @@ export default async function CardDetailPage({
                   <div className="text-sm text-white/60">Sem texto cadastrado.</div>
                 )}
 
-                {(card.deploy_box || card.epic_action || card.reminder_text) ? (
+                {card.deploy_box || card.epic_action || card.reminder_text ? (
                   <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
                     {card.deploy_box ? (
                       <div className="rounded-xl border border-white/10 bg-black/40 p-3">
                         <div className="text-xs text-white/50 mb-1">Deploy</div>
-                        <div className="whitespace-pre-wrap text-sm text-white/70">
-                          {card.deploy_box}
-                        </div>
+                        <div className="whitespace-pre-wrap text-sm text-white/70">{card.deploy_box}</div>
                       </div>
                     ) : null}
 
                     {card.epic_action ? (
                       <div className="rounded-xl border border-white/10 bg-black/40 p-3">
                         <div className="text-xs text-white/50 mb-1">Epic Action</div>
-                        <div className="whitespace-pre-wrap text-sm text-white/70">
-                          {card.epic_action}
-                        </div>
+                        <div className="whitespace-pre-wrap text-sm text-white/70">{card.epic_action}</div>
                       </div>
                     ) : null}
 
@@ -381,7 +364,7 @@ export default async function CardDetailPage({
               </div>
             </div>
           </div>
-        </div>        
+        </div>
       </div>
 
       <SiteFooter />

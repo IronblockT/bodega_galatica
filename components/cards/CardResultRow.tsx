@@ -1,6 +1,8 @@
+// CardResultRow
+
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ConditionSelector } from "./ConditionSelector";
 import { QuantitySelector } from "./QuantitySelector";
 import Link from "next/link";
@@ -9,11 +11,9 @@ function getTypeLabel(v: any): string {
   if (!v) return "—";
   if (typeof v === "string") return v;
 
-  // relation Strapi: { data: { attributes: { name } } }
   const name1 = v?.data?.attributes?.name;
   if (typeof name1 === "string" && name1.trim()) return name1.trim();
 
-  // outros fallbacks
   const name2 = v?.attributes?.name;
   if (typeof name2 === "string" && name2.trim()) return name2.trim();
 
@@ -29,14 +29,23 @@ export function CardResultRow({ card }: any) {
 
   const typeLabel = getTypeLabel(card.type);
 
-  const isHorizontal =
-    card.type === "Leader" || card.type === "Base";
+  const isHorizontal = card.type === "Leader" || card.type === "Base";
+
+  // ✅ rota correta: /cartas/[card_uid]
+  // ✅ passamos finish + cond pra manter o contexto da variante escolhida
+  const detailHref = useMemo(() => {
+    const uid = encodeURIComponent(String(card.uid ?? ""));
+    const finish = encodeURIComponent(String(card.finish ?? "standard"));
+    const cond = encodeURIComponent(String(condition ?? "NM"));
+
+    return `/cartas/${uid}?finish=${finish}&cond=${cond}`;
+  }, [card.uid, card.finish, condition]);
 
   return (
     <div className="flex gap-4 rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur">
       {/* Imagem (clicável) */}
       <div className="flex-shrink-0">
-        <Link href={`/cartas/${card.id}`} className="block">
+        <Link href={detailHref} className="block">
           <div className="relative h-48 w-36 md:h-56 md:w-40 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center">
             {card.image ? (
               <img
@@ -57,13 +66,13 @@ export function CardResultRow({ card }: any) {
       <div className="flex flex-1 flex-col justify-between">
         <div>
           <h3 className="text-white font-semibold">
-            <Link href={`/cartas/${card.id}`} className="hover:underline">
+            <Link href={detailHref} className="hover:underline">
               {card.name}
             </Link>
           </h3>
 
           <p className="text-xs text-white/60">
-            {typeLabel} • {card.set}
+            {typeLabel} • {card.set} • {card.finish}
           </p>
 
           {card.rules_text ? (
@@ -86,9 +95,7 @@ export function CardResultRow({ card }: any) {
           R$ {Number(variant.price || 0).toFixed(2)}
         </div>
 
-        <p className="text-xs text-white/60 mb-2">
-          {variant.stock ?? 0} em estoque
-        </p>
+        <p className="text-xs text-white/60 mb-2">{variant.stock ?? 0} em estoque</p>
 
         <QuantitySelector max={variant.stock ?? 0} />
 

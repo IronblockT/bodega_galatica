@@ -27,6 +27,10 @@ type ApiCard = {
 
   image_front_url: string | null;
   image_back_url: string | null;
+
+  finish: string;
+  variants: Record<string, { price: number; stock: number; sku_key: string; promo_type?: string }>;
+  recommended_condition: string;
 };
 
 type ApiResponse = {
@@ -39,26 +43,27 @@ type ApiResponse = {
 };
 
 const secondaryBtn =
-  "rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors";
+  "rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
 function toMockRow(card: ApiCard) {
+  const recommended = card.recommended_condition ?? "NM";
+
   return {
-    id: card.card_uid,
+    // precisa ser único por row (card_uid + finish)
+    id: `${card.card_uid}::${card.finish}`,
+
+    uid: card.card_uid,
     name: card.subtitle ? `${card.title}, ${card.subtitle}` : card.title,
     set: card.expansion_code,
+
+    finish: card.finish,
+
     type: card.card_type_label ?? "—",
     image: card.image_front_url ?? "/placeholder-card.png",
-
-    // ✅ já fica disponível pra modal/detalhe futuramente
     rules_text: card.rules_text ?? "",
 
-    recommendedCondition: "NM",
-    variants: {
-      NM: { price: 0, stock: 0 },
-      EX: { price: 0, stock: 0 },
-      VG: { price: 0, stock: 0 },
-      G: { price: 0, stock: 0 },
-    },
+    recommendedCondition: recommended,
+    variants: card.variants ?? {},
   };
 }
 
@@ -75,8 +80,8 @@ export function CardSearchResults() {
 
   const page = Math.max(parseInt(sp.get("page") ?? "1", 10), 1);
   const pageSize = Math.min(
-    Math.max(parseInt(sp.get("pageSize") ?? "24", 10), 1),
-    60
+    Math.max(parseInt(sp.get("pageSize") ?? "10", 10), 1),
+    50
   );
 
   const q = sp.get("q") ?? "";
@@ -87,6 +92,8 @@ export function CardSearchResults() {
   const aspects = sp.get("aspects") ?? "";
   const traits = sp.get("traits") ?? "";
   const keywords = sp.get("keywords") ?? "";
+
+  const stock = sp.get("stock") ?? ""; // "1" ou ""
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -99,34 +106,64 @@ export function CardSearchResults() {
     if (traits) params.set("traits", traits);
     if (keywords) params.set("keywords", keywords);
 
+    // ✅ importante: stock entra aqui e depende dele
+    if (stock) params.set("stock", stock);
+
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
     return params.toString();
-  }, [q, setCode, type, rarity, aspects, traits, keywords, page, pageSize]);
+  }, [
+    q,
+    setCode,
+    type,
+    rarity,
+    aspects,
+    traits,
+    keywords,
+    stock, // ✅ faltava
+    page,
+    pageSize,
+  ]);
 
   useEffect(() => {
     let mounted = true;
 
     (async () => {
-      setLoading(true);
-      setErrorMsg(null);
+      try {
+        setLoading(true);
+        setErrorMsg(null);
 
-      const res = await fetch(`/api/cards?${queryString}`, { cache: "no-store" });
-      const json = (await res.json()) as ApiResponse;
+        const res = await fetch(`/api/cards?${queryString}`, { cache: "no-store" });
 
-      if (!mounted) return;
+        // se o backend cair (500 sem JSON), evita crash
+        const text = await res.text();
+        let json: ApiResponse | null = null;
+        try {
+          json = JSON.parse(text) as ApiResponse;
+        } catch {
+          json = null;
+        }
 
-      if (!json.ok) {
-        setErrorMsg(json.error ?? "Falha ao buscar cartas.");
+        if (!mounted) return;
+
+        if (!res.ok || !json?.ok) {
+          setErrorMsg(json?.error ?? "Falha ao buscar cartas.");
+          setItems([]);
+          setTotal(0);
+          setLoading(false);
+          return;
+        }
+
+        setItems(json.items ?? []);
+        setTotal(json.total ?? 0);
+        setLoading(false);
+      } catch (err: any) {
+        if (!mounted) return;
+        setErrorMsg(err?.message ?? "Falha ao buscar cartas.");
         setItems([]);
         setTotal(0);
         setLoading(false);
-        return;
       }
-
-      setItems(json.items ?? []);
-      setTotal(json.total ?? 0);
-      setLoading(false);
     })();
 
     return () => {
@@ -193,5 +230,3 @@ export function CardSearchResults() {
     </div>
   );
 }
-
-
