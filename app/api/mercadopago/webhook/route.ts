@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
-// >>> Ajuste este verificador conforme o padrão exato do Mercado Pago na tua conta/painel.
-// Os headers citados são os usados pelo MP para assinatura/verificação. :contentReference[oaicite:4]{index=4}
 function parseXSignature(xSignature: string) {
-  // Ex: "ts=1700000000,v1=abcdef..."
   const parts = xSignature.split(",").map((p) => p.trim());
   const ts = parts.find((p) => p.startsWith("ts="))?.slice(3) ?? null;
   const v1 = parts.find((p) => p.startsWith("v1="))?.slice(3) ?? null;
@@ -18,24 +15,19 @@ function verifyMpSignature(req: Request, rawBody: string, paymentId: string) {
   const xSignature = req.headers.get("x-signature") ?? "";
   const xRequestId = req.headers.get("x-request-id") ?? "";
 
-  // ✅ agora exigimos request-id também
   if (!xSignature || !xRequestId || !paymentId) return false;
 
   const { ts, v1 } = parseXSignature(xSignature);
   if (!ts || !v1) return false;
 
-  // Normaliza
   const received = String(v1).trim().toLowerCase();
 
-  // Formato A (manifest) — muito comum
   const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
   const computedA = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
 
-  // Formato B (raw body) — outro formato comum em webhooks HMAC
   const baseB = `${ts}.${xRequestId}.${rawBody}`;
   const computedB = crypto.createHmac("sha256", secret).update(baseB).digest("hex");
 
-  // Compare timing-safe (como string)
   const safeEq = (a: string, b: string) => {
     const ba = Buffer.from(a, "utf8");
     const bb = Buffer.from(b, "utf8");
@@ -46,87 +38,89 @@ function verifyMpSignature(req: Request, rawBody: string, paymentId: string) {
   return safeEq(received, computedA.toLowerCase()) || safeEq(received, computedB.toLowerCase());
 }
 
+function mapInternalPaymentStatus(mpStatus: string) {
+  const s = String(mpStatus || "").toLowerCase();
+  if (s === "approved") return "approved";
+  if (s === "rejected") return "rejected";
+  if (s === "cancelled") return "cancelled";
+  if (s === "refunded") return "refunded";
+  if (s === "charged_back" || s === "chargeback") return "chargeback";
+  if (s === "error") return "error";
+  return "pending";
+}
+
 export async function GET() {
-  // Healthcheck do Mercado Pago (e útil pra você também)
   return NextResponse.json({ ok: true });
 }
 
 export async function POST(req: Request) {
   const rawBody = await req.text();
 
-  // tenta parsear JSON (se não for JSON, segue vazio)
   let payload: any = {};
   try {
     payload = rawBody ? JSON.parse(rawBody) : {};
   } catch { }
 
-  // identificar payment id (varia por formato)
   const paymentId =
     payload?.data?.id ??
     payload?.id ??
     (typeof payload?.resource === "string" ? payload.resource.split("/").pop() : null);
 
-  // se não tem paymentId, não dá pra validar assinatura pelo manifest
+  // Se não tem paymentId, não tem o que fazer — responde 200 e pronto.
   if (!paymentId) {
     return NextResponse.json({ received: true });
   }
 
-  // ✅ valida assinatura (agora obrigatório)
+  const enforceSig = process.env.MP_WEBHOOK_ENFORCE_SIG === "true";
+
+  // ✅ assinatura: só exige quando enforceSig=true
   const okSig = verifyMpSignature(req, rawBody, String(paymentId));
 
-  console.log("[MP webhook] headers", {
+  console.log("[MP webhook] sig-check", {
+    enforce: enforceSig,
+    okSig,
     hasSecret: !!process.env.MP_WEBHOOK_SECRET,
     xRequestId: req.headers.get("x-request-id"),
-    xSignature: req.headers.get("x-signature"),
+    xSignature: !!req.headers.get("x-signature"),
     paymentId: String(paymentId),
     bodyLen: rawBody.length,
   });
 
-  if (!okSig) {
-    const sig = req.headers.get("x-signature") ?? "";
-    const maskedSig =
-      sig.length > 20 ? `${sig.slice(0, 12)}...${sig.slice(-8)}` : sig;
-
-    console.log("[MP webhook] Invalid signature", {
-      hasSecret: !!process.env.MP_WEBHOOK_SECRET,
-      paymentId: String(paymentId),
-      xRequestId: req.headers.get("x-request-id"),
-      xSignatureMasked: maskedSig,
-      bodyLen: rawBody.length,
-    });
-
+  if (enforceSig && !okSig) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // 4) buscar detalhes do pagamento na API do MP (fonte de verdade)
   const mpAccessToken = process.env.MP_ACCESS_TOKEN!;
+  if (!mpAccessToken) {
+    // não tem como validar no MP -> aceita pra não entrar em loop de retry
+    return NextResponse.json({ received: true });
+  }
+
+  // Fonte de verdade: MP payment details
   const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
     headers: { Authorization: `Bearer ${mpAccessToken}` },
   });
 
   if (!payRes.ok) {
-    // responde 200 para não ficar re-tentando agressivamente, mas loga no server
     return NextResponse.json({ received: true });
   }
 
   const payment = await payRes.json();
 
-  const status = String(payment.status ?? "");
-  const orderId = payment.external_reference; // UUID da tabela orders (external_reference)
+  const mpStatus = String(payment.status ?? "");
+  const orderId = payment.external_reference; // UUID orders.id
 
-  if (!orderId) {
-    return NextResponse.json({ received: true });
-  }
+  if (!orderId) return NextResponse.json({ received: true });
 
   const providerPaymentId = String(payment.id);
-  const providerPaymentStatus = String(payment.status ?? "");
   const providerPaymentUpdatedAt =
     payment.date_last_updated || payment.date_approved || payment.date_created || null;
 
-  // 5) atualizar Supabase conforme status
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json({ received: true });
+  }
 
   const sb = async (path: string, init: RequestInit) => {
     const res = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -145,61 +139,6 @@ export async function POST(req: Request) {
     return res;
   };
 
-  // tenta achar payment row pelo provider_payment_id
-  const q = `payments?select=id,order_id,provider_payment_status,provider_payment_updated_at`
-    + `&provider=eq.mercadopago`
-    + `&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}`
-    + `&limit=1`;
-
-  const existingRes = await sb(q, { method: "GET" });
-  const existing = (await existingRes.json()) as any[];
-  const existingRow = existing?.[0];
-
-  // Se já existe e status + updated_at são iguais => já processamos este evento
-  if (
-    existingRow &&
-    String(existingRow.provider_payment_status ?? "") === providerPaymentStatus &&
-    String(existingRow.provider_payment_updated_at ?? "") === String(providerPaymentUpdatedAt ?? "")
-  ) {
-    return NextResponse.json({ received: true, idempotent: true });
-  }
-
-  // Caso não exista, ou mudou status/updated_at: registra (upsert)
-  // Como temos índice unique(provider, provider_payment_id), dá pra tentar inserir e, se falhar, dar PATCH
-  try {
-    await sb("payments", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify({
-        // order_id vem do external_reference (no seu fluxo é o UUID de orders.id)
-        order_id: orderId,
-        provider: "mercadopago",
-        status: providerPaymentStatus === "approved" ? "paid" : "pending",
-        provider_payment_id: providerPaymentId,
-        provider_payment_status: providerPaymentStatus,
-        provider_payment_updated_at: providerPaymentUpdatedAt,
-        provider_payload: payment,
-        amount_brl: payment.transaction_amount ?? null,
-        currency: payment.currency_id ?? "BRL",
-      }),
-    });
-  } catch {
-    // se já existia, atualiza
-    await sb(
-      `payments?provider=eq.mercadopago&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({
-          provider_payment_status: providerPaymentStatus,
-          provider_payment_updated_at: providerPaymentUpdatedAt,
-          provider_payload: payment,
-          // opcional: refletir também seu status interno
-          status: providerPaymentStatus === "approved" ? "paid" : "pending",
-        }),
-      }
-    );
-  }
-
   const rpcJson = async (fn: string, body: any) => {
     const r = await fetch(`${supabaseUrl}/rest/v1/rpc/${fn}`, {
       method: "POST",
@@ -215,29 +154,76 @@ export async function POST(req: Request) {
     return txt ? JSON.parse(txt) : null;
   };
 
-  // Exemplo de decisão (agora alinhado com orders/checkout):
-  if (status === "approved") {
-    // ✅ Finaliza o pedido + consome reserva
+  // idempotência por (provider, provider_payment_id + updated_at)
+  const q =
+    `payments?select=id,provider_payment_status,provider_payment_updated_at` +
+    `&provider=eq.mercadopago` +
+    `&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}` +
+    `&limit=1`;
+
+  const existingRes = await sb(q, { method: "GET" });
+  const existing = (await existingRes.json()) as any[];
+  const existingRow = existing?.[0];
+
+  if (
+    existingRow &&
+    String(existingRow.provider_payment_status ?? "") === String(mpStatus) &&
+    String(existingRow.provider_payment_updated_at ?? "") === String(providerPaymentUpdatedAt ?? "")
+  ) {
+    return NextResponse.json({ received: true, idempotent: true });
+  }
+
+  const internalStatus = mapInternalPaymentStatus(mpStatus);
+
+  // upsert payment row
+  try {
+    await sb("payments", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({
+        order_id: orderId,
+        provider: "mercadopago",
+        status: internalStatus,
+        provider_payment_id: providerPaymentId,
+        provider_payment_status: mpStatus,
+        provider_payment_updated_at: providerPaymentUpdatedAt,
+        provider_payload: payment,
+        amount_brl: payment.transaction_amount ?? null,
+        currency: payment.currency_id ?? "BRL",
+      }),
+    });
+  } catch {
+    await sb(
+      `payments?provider=eq.mercadopago&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: internalStatus,
+          provider_payment_status: mpStatus,
+          provider_payment_updated_at: providerPaymentUpdatedAt,
+          provider_payload: payment,
+        }),
+      }
+    );
+  }
+
+  // Fluxo de negócio
+  if (mpStatus === "approved") {
     await rpcJson("rpc_checkout_commit", {
       p_order_id: orderId,
       p_provider: "mercadopago",
-      p_provider_payment_id: String(payment.id),
+      p_provider_payment_id: providerPaymentId,
       p_amount_brl: payment.transaction_amount,
       p_provider_payload: payment,
     });
-
-  } else if (status === "rejected" || status === "cancelled") {
-    // ✅ Libera estoque reservado
+  } else if (mpStatus === "rejected" || mpStatus === "cancelled") {
     await rpcJson("rpc_checkout_release", { p_order_id: orderId });
 
-    // opcional: marca order como cancelled
     await sb(`orders?id=eq.${orderId}`, {
       method: "PATCH",
       body: JSON.stringify({ status: "cancelled" }),
     });
-
   } else {
-    // pending, in_process etc: mantém aguardando pagamento (opcional)
     await sb(`orders?id=eq.${orderId}`, {
       method: "PATCH",
       body: JSON.stringify({ status: "awaiting_payment" }),

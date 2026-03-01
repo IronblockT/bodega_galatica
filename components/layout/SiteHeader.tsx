@@ -4,8 +4,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/hooks/useAuth';
+import { useCart } from '@/components/cart/CartProvider';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 
 type NavItem = {
   label: string;
@@ -126,10 +126,10 @@ function Dropdown({
                   {section.title && (
                     <div
                       className="
-      text-xs font-semibold uppercase tracking-[0.18em]
-      text-amber-300
-      drop-shadow-[0_1px_4px_rgba(245,158,11,.35)]
-    "
+                        text-xs font-semibold uppercase tracking-[0.18em]
+                        text-amber-300
+                        drop-shadow-[0_1px_4px_rgba(245,158,11,.35)]
+                      "
                     >
                       {section.title}
                     </div>
@@ -140,7 +140,7 @@ function Dropdown({
                       <Link
                         key={l.href}
                         href={l.href}
-                        onClick={onClose} // fecha ao navegar
+                        onClick={onClose}
                         className="
                           rounded-xl px-3 py-2 text-sm
                           text-white/80 hover:text-white
@@ -162,6 +162,33 @@ function Dropdown({
   );
 }
 
+function CartIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M7 7h14l-2 8H8L7 7Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 7 6.5 5H3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9.5 20a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"
+        fill="currentColor"
+      />
+      <path
+        d="M17.5 20a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export function SiteHeader() {
   const router = useRouter();
 
@@ -175,11 +202,17 @@ export function SiteHeader() {
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
 
-  const avatarKey = profile?.avatar_key ?? null;  
+  // ✅ carrinho
+  const { count, items: cartItems, reserving, lastReserveError, expiresAt, reserveNow, clear } = useCart();
+  const [cartOpen, setCartOpen] = useState(false);
+  const cartRef = useRef<HTMLDivElement>(null);
+
+  const avatarKey = profile?.avatar_key ?? null;
 
   async function handleLogout() {
     await signOut();
     setAccountOpen(false);
+    setCartOpen(false);
     router.push('/');
   }
 
@@ -195,6 +228,10 @@ export function SiteHeader() {
       if (accountRef.current && !accountRef.current.contains(target)) {
         setAccountOpen(false);
       }
+
+      if (cartRef.current && !cartRef.current.contains(target)) {
+        setCartOpen(false);
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -207,6 +244,7 @@ export function SiteHeader() {
       if (event.key === 'Escape') {
         setOpenLabel(null);
         setAccountOpen(false);
+        setCartOpen(false);
       }
     }
 
@@ -214,8 +252,7 @@ export function SiteHeader() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const avatarText =
-    (user?.email?.[0] ?? 'U').toUpperCase();
+  const avatarText = (user?.email?.[0] ?? 'U').toUpperCase();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 w-full">
@@ -274,7 +311,6 @@ export function SiteHeader() {
           </div>
 
           {/* Ações (direita) */}
-          {/* Ações (direita) */}
           <nav className="ml-auto flex items-center gap-2">
             {/* Comprar */}
             <Link
@@ -283,6 +319,172 @@ export function SiteHeader() {
             >
               Comprar
             </Link>
+
+            {/* ✅ Carrinho (produção) */}
+            <div className="relative" ref={cartRef}>
+              <button
+                type="button"
+                onClick={() => setCartOpen((v) => !v)}
+                className="
+                  relative inline-flex items-center gap-2 rounded-full
+                  border border-white/15 bg-white/5
+                  px-3 py-2 text-sm text-white/85
+                  hover:bg-white/10 hover:border-white/25 hover:text-white transition
+                "
+                aria-haspopup="dialog"
+                aria-expanded={cartOpen}
+              >
+                <CartIcon className="h-5 w-5" />
+                <span className="hidden sm:inline">Carrinho</span>
+
+                {/* badge */}
+                {count > 0 ? (
+                  <span
+                    className="
+                      absolute -top-1 -right-1
+                      h-5 min-w-[20px] px-1
+                      rounded-full
+                      bg-orange-500
+                      text-[#0B0C10]
+                      text-[11px] font-bold
+                      flex items-center justify-center
+                      shadow-[0_10px_25px_rgba(249,115,22,.25)]
+                    "
+                    aria-label={`${count} itens no carrinho`}
+                  >
+                    {count > 99 ? '99+' : count}
+                  </span>
+                ) : null}
+              </button>
+
+              {cartOpen && (
+                <div
+                  className="
+                    absolute right-0 top-full z-50 mt-3 w-[360px]
+                    rounded-2xl border border-white/10
+                    bg-[#0B0C10]/95 backdrop-blur
+                    shadow-2xl
+                  "
+                  role="dialog"
+                  aria-label="Carrinho"
+                >
+                  <div className="sunset-line" />
+
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-white/85">Seu carrinho</div>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70 hover:bg-white/10"
+                        onClick={() => setCartOpen(false)}
+                      >
+                        Fechar
+                      </button>
+                    </div>
+
+                    <div className="mt-3 text-xs text-white/55">
+                      {count > 0 ? (
+                        <>
+                          <div>{count} item(ns)</div>
+                          <div>
+                            Reserva:{' '}
+                            <span className="text-white/75">
+                              {expiresAt ? new Date(expiresAt).toLocaleString('pt-BR') : '—'}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div>Carrinho vazio.</div>
+                      )}
+                    </div>
+
+                    {lastReserveError ? (
+                      <div className="mt-3 rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-rose-200">
+                        {lastReserveError}
+                      </div>
+                    ) : null}
+
+                    {/* itens (versão mínima: sku + qty) */}
+                    {cartItems.length > 0 ? (
+                      <div className="mt-4 max-h-[280px] overflow-auto pr-1 space-y-2">
+                        {cartItems.slice(0, 8).map((it) => (
+                          <div
+                            key={it.sku_key}
+                            className="rounded-xl border border-white/10 bg-black/60 px-3 py-2"
+                          >
+                            <div className="text-[11px] text-white/45">SKU</div>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="font-mono text-[11px] text-white/75 truncate">
+                                {it.sku_key}
+                              </div>
+                              <div className="text-xs text-white/80">x{it.qty}</div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {cartItems.length > 8 ? (
+                          <div className="text-[11px] text-white/45">
+                            +{cartItems.length - 8} item(ns)…
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {/* ações */}
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <Link
+                        href="/carrinho"
+                        onClick={() => setCartOpen(false)}
+                        className="
+                          rounded-full border border-white/15 bg-white/5
+                          px-4 py-2 text-xs font-semibold text-white/85
+                          hover:bg-white/10 hover:text-white transition text-center
+                        "
+                      >
+                        Ver carrinho
+                      </Link>
+
+                      <button
+                        type="button"
+                        disabled={!isLoggedIn || cartItems.length === 0 || reserving}
+                        onClick={async () => {
+                          await reserveNow();
+                        }}
+                        className="
+                          rounded-full bg-orange-500
+                          px-4 py-2 text-xs font-semibold text-[#0B0C10]
+                          hover:bg-orange-600 transition-colors
+                          disabled:opacity-40
+                        "
+                      >
+                        {reserving ? 'Reservando…' : 'Reservar'}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={cartItems.length === 0}
+                        onClick={() => clear()}
+                        className="
+                          col-span-2 rounded-full border border-white/15 bg-white/5
+                          px-4 py-2 text-xs font-semibold text-white/80
+                          hover:bg-white/10 hover:text-white transition
+                          disabled:opacity-40
+                        "
+                      >
+                        Limpar carrinho
+                      </button>
+                    </div>
+
+                    {!isLoggedIn ? (
+                      <div className="mt-3 text-[11px] text-white/45">
+                        Faça <Link href="/entrar" className="text-orange-300 hover:underline" onClick={() => setCartOpen(false)}>login</Link>{' '}
+                        para reservar e finalizar compras.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Vender */}
             <Link
@@ -322,7 +524,7 @@ export function SiteHeader() {
                       />
                     ) : (
                       <span className="h-8 w-8 rounded-full bg-white/10 text-white flex items-center justify-center text-sm font-semibold">
-                        {user?.email?.[0]?.toUpperCase() ?? 'U'}
+                        {avatarText}
                       </span>
                     )}
                   </span>
@@ -335,11 +537,11 @@ export function SiteHeader() {
                 {accountOpen && (
                   <div
                     className="
-            absolute right-0 top-full z-50 mt-3 w-56
-            rounded-2xl border border-white/10
-            bg-[#0B0C10]/95 backdrop-blur
-            shadow-2xl
-          "
+                      absolute right-0 top-full z-50 mt-3 w-56
+                      rounded-2xl border border-white/10
+                      bg-[#0B0C10]/95 backdrop-blur
+                      shadow-2xl
+                    "
                     role="menu"
                   >
                     <div className="sunset-line" />
@@ -349,10 +551,10 @@ export function SiteHeader() {
                         href="/minha-conta"
                         onClick={() => setAccountOpen(false)}
                         className="
-                block rounded-xl px-3 py-2 text-sm
-                text-white/85 hover:text-white
-                hover:bg-white/10 transition
-              "
+                          block rounded-xl px-3 py-2 text-sm
+                          text-white/85 hover:text-white
+                          hover:bg-white/10 transition
+                        "
                         role="menuitem"
                       >
                         Minha conta
@@ -362,10 +564,10 @@ export function SiteHeader() {
                         href="/configuracoes"
                         onClick={() => setAccountOpen(false)}
                         className="
-                block rounded-xl px-3 py-2 text-sm
-                text-white/85 hover:text-white
-                hover:bg-white/10 transition
-              "
+                          block rounded-xl px-3 py-2 text-sm
+                          text-white/85 hover:text-white
+                          hover:bg-white/10 transition
+                        "
                         role="menuitem"
                       >
                         Configurações
@@ -377,10 +579,10 @@ export function SiteHeader() {
                         type="button"
                         onClick={handleLogout}
                         className="
-                w-full text-left rounded-xl px-3 py-2 text-sm
-                text-rose-200 hover:text-white
-                hover:bg-white/10 transition
-              "
+                          w-full text-left rounded-xl px-3 py-2 text-sm
+                          text-rose-200 hover:text-white
+                          hover:bg-white/10 transition
+                        "
                         role="menuitem"
                       >
                         Sair

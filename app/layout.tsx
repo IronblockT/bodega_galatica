@@ -17,20 +17,21 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Bodega Galáctica",
   description: "Loja virtual de Star Wars: Unlimited",
+  // ✅ opcional (bom pra OG/links absolutos). Se não tiver APP_URL, pode remover.
+  metadataBase: process.env.APP_URL ? new URL(process.env.APP_URL) : undefined,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}>
         <Providers>
           <SiteHeader />
-          <div className="h-36" aria-hidden />
-          {children}
+
+          {/* ✅ espaço do header sem precisar de div “solta” */}
+          <div className="pt-36">{children}</div>
         </Providers>
       </body>
     </html>
   );
 }
-
-

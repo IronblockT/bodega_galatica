@@ -12,7 +12,7 @@ const PAGE_SIZE = 100;
 
 // ✅ Rodar uma coleção por vez (iniciando com SOR)
 // Depois é só trocar aqui para SHD, TWI, etc.
-const TARGET_EXPANSION = 'LAW';
+const TARGET_EXPANSION = 'TWI';
 
 type JsonValue =
   | string

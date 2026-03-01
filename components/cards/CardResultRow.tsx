@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConditionSelector } from "./ConditionSelector";
 import { QuantitySelector } from "./QuantitySelector";
 import Link from "next/link";
@@ -25,19 +25,33 @@ function getTypeLabel(v: any): string {
 
 export function CardResultRow({ card }: any) {
   const [condition, setCondition] = useState(card.recommendedCondition);
+
+  // ✅ NOVO: qty controlado (para o carrinho)
+  const [qty, setQty] = useState(1);
+
   const variant = card.variants?.[condition] ?? { price: 0, stock: 0 };
 
-  const typeLabel = getTypeLabel(card.type);
+  // ✅ garante qty válido ao trocar condição/estoque
+  useEffect(() => {
+    const max = Number(variant.stock ?? 0);
+    if (max <= 0) {
+      setQty(0);
+      return;
+    }
+    setQty((prev) => {
+      if (prev < 1) return 1;
+      if (prev > max) return max;
+      return prev;
+    });
+  }, [variant.stock, condition]);
 
+  const typeLabel = getTypeLabel(card.type);
   const isHorizontal = card.type === "Leader" || card.type === "Base";
 
-  // ✅ rota correta: /cartas/[card_uid]
-  // ✅ passamos finish + cond pra manter o contexto da variante escolhida
   const detailHref = useMemo(() => {
     const uid = encodeURIComponent(String(card.uid ?? ""));
     const finish = encodeURIComponent(String(card.finish ?? "standard"));
     const cond = encodeURIComponent(String(condition ?? "NM"));
-
     return `/cartas/${uid}?finish=${finish}&cond=${cond}`;
   }, [card.uid, card.finish, condition]);
 
@@ -97,10 +111,15 @@ export function CardResultRow({ card }: any) {
 
         <p className="text-xs text-white/60 mb-2">{variant.stock ?? 0} em estoque</p>
 
-        <QuantitySelector max={variant.stock ?? 0} />
+        {/* ✅ agora controlado */}
+        <QuantitySelector
+          max={variant.stock ?? 0}
+          value={qty}
+          onChange={setQty}
+        />
 
         <button
-          disabled={(variant.stock ?? 0) === 0}
+          disabled={(variant.stock ?? 0) === 0 || qty <= 0}
           className={[
             "mt-2 w-full rounded-full px-4 py-2 text-xs font-semibold",
             "text-[#0B0C10]",
@@ -109,6 +128,16 @@ export function CardResultRow({ card }: any) {
             "transition-colors",
             "disabled:opacity-40",
           ].join(" ")}
+          // ✅ ainda não estamos adicionando no carrinho aqui (isso é o próximo passo)
+          onClick={() => {
+            console.log("[add-to-cart]", {
+              card_uid: card.uid,
+              finish: card.finish,
+              condition,
+              qty,
+              sku_key: variant?.sku_key,
+            });
+          }}
         >
           Adicionar
         </button>
