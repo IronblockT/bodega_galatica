@@ -34,8 +34,56 @@ type AddressRow = {
   state: string | null;
 };
 
+type OrderRow = {
+  id: string;
+  user_id: string;
+  status: string;
+  total_brl: number | string;
+  currency: string;
+  created_at: string;
+};
+
+type OrderItemRow = {
+  id: string;
+  order_id: string;
+  qty: number;
+  line_total_brl: number | string;
+};
+
+type PurchaseSummary = {
+  totalOrders: number;
+  totalItems: number;
+  latestOrder: OrderRow | null;
+};
+
 function onlyDigits(v: string) {
   return (v || '').replace(/\D/g, '');
+}
+
+function formatMoneyBRL(value: number | string | null | undefined) {
+  const n = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(n)) return '—';
+  return Number(n).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
+
+function formatDateBR(value: string | null | undefined) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('pt-BR');
+}
+
+function mapOrderStatusLabel(status: string | null | undefined) {
+  const s = String(status ?? '').toLowerCase();
+  if (s === 'paid') return 'Pago';
+  if (s === 'awaiting_payment') return 'Aguardando pagamento';
+  if (s === 'reserved') return 'Reservado';
+  if (s === 'cancelled') return 'Cancelado';
+  if (s === 'draft') return 'Rascunho';
+  return status ?? '—';
 }
 
 const panelClass = 'rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur';
@@ -62,6 +110,13 @@ export default function MinhaContaPage() {
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [address, setAddress] = useState<AddressRow | null>(null);
+
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [purchaseSummary, setPurchaseSummary] = useState<PurchaseSummary>({
+    totalOrders: 0,
+    totalItems: 0,
+    latestOrder: null,
+  });
 
   const email = useMemo(() => user?.email ?? null, [user]);
 
@@ -131,6 +186,57 @@ export default function MinhaContaPage() {
       }
 
       setAddress(a ?? null);
+
+      const { data: orderRows, error: orderErr } = await supabase
+        .from('orders')
+        .select('id, user_id, status, total_brl, currency, created_at')
+        .eq('user_id', user.id)
+        .eq('status', 'paid')
+        .order('created_at', { ascending: false });
+
+      if (!mounted) return;
+
+      if (orderErr) {
+        setErrorMsg(`Erro ao carregar pedidos: ${orderErr.message}`);
+        setLoading(false);
+        return;
+      }
+
+      const safeOrders = (orderRows ?? []) as OrderRow[];
+      setOrders(safeOrders);
+
+      if (safeOrders.length === 0) {
+        setPurchaseSummary({
+          totalOrders: 0,
+          totalItems: 0,
+          latestOrder: null,
+        });
+      } else {
+        const orderIds = safeOrders.map((o) => o.id);
+
+        const { data: itemRows, error: itemErr } = await supabase
+          .from('order_items')
+          .select('id, order_id, qty, line_total_brl')
+          .in('order_id', orderIds);
+
+        if (!mounted) return;
+
+        if (itemErr) {
+          setErrorMsg(`Erro ao carregar itens dos pedidos: ${itemErr.message}`);
+          setLoading(false);
+          return;
+        }
+
+        const safeItems = (itemRows ?? []) as OrderItemRow[];
+        const totalItems = safeItems.reduce((acc, item) => acc + Number(item.qty ?? 0), 0);
+
+        setPurchaseSummary({
+          totalOrders: safeOrders.length,
+          totalItems,
+          latestOrder: safeOrders[0] ?? null,
+        });
+      }
+
       setLoading(false);
     }
 
@@ -337,25 +443,58 @@ export default function MinhaContaPage() {
                       saving={savingAddress}
                     />
                   )}
+
                   <div className={panelClass}>
                     <h2 className={titleClass}>Meus pedidos</h2>
 
                     <p className="text-xs text-white/70">
-                      Em breve você poderá acompanhar aqui seus pedidos de{' '}
-                      <span className="font-semibold text-white/85">compra</span> e{' '}
-                      <span className="font-semibold text-white/85">venda</span>, com histórico,
-                      status e detalhes de cada transação.
+                      Aqui você acompanha seus pedidos de{' '}
+                      <span className="font-semibold text-white/85">compra</span> e, em breve,
+                      também suas <span className="font-semibold text-white/85">vendas</span>.
                     </p>
 
                     <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                       {/* COMPRAS */}
                       <div className="rounded-xl border border-white/10 bg-black/50 p-4">
                         <div className="text-xs text-white/60">Compras</div>
-                        <div className="mt-1 text-sm font-semibold text-white">0 pedidos</div>
 
-                        <div className="mt-2 text-xs text-white/55">
-                          Você ainda não fez nenhuma compra na Bodega.
+                        <div className="mt-1 text-sm font-semibold text-white">
+                          {purchaseSummary.totalOrders} {purchaseSummary.totalOrders === 1 ? 'pedido' : 'pedidos'}
                         </div>
+
+                        {purchaseSummary.totalOrders === 0 ? (
+                          <div className="mt-2 text-xs text-white/55">
+                            Você ainda não fez nenhuma compra na Bodega.
+                          </div>
+                        ) : (
+                          <div className="mt-3 space-y-1 text-xs text-white/65">
+                            <div>
+                              <span className="text-white/45">Último pedido:</span>{' '}
+                              <span className="text-white/85">
+                                {formatDateBR(purchaseSummary.latestOrder?.created_at)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-white/45">Status:</span>{' '}
+                              <span className="text-white/85">
+                                {mapOrderStatusLabel(purchaseSummary.latestOrder?.status)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-white/45">Valor:</span>{' '}
+                              <span className="text-white/85">
+                                {formatMoneyBRL(purchaseSummary.latestOrder?.total_brl)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-white/45">Itens comprados:</span>{' '}
+                              <span className="text-white/85">{purchaseSummary.totalItems}</span>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="mt-4">
                           <Link href="/meus-pedidos?tipo=compras" className={secondaryBtn}>
@@ -388,8 +527,8 @@ export default function MinhaContaPage() {
                     </div>
 
                     <div className="mt-3 text-[11px] text-white/45">
-                      * A área de “Meus pedidos” está em construção.
-                      Em breve: status, histórico completo, comprovantes e detalhes.
+                      * O resumo de compras já está ativo. A área de vendas e o histórico completo
+                      ainda serão expandidos com mais detalhes.
                     </div>
                   </div>
                 </div>

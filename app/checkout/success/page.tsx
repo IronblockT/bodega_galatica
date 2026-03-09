@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/components/cart/CartProvider";
 
 const panelClass =
@@ -10,13 +10,17 @@ const panelClass =
 export default function CheckoutSuccessPage() {
   const { clear } = useCart();
   const [orderId, setOrderId] = useState<string | null>(null);
+  const didInit = useRef(false);
 
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+
     clear();
 
     const params = new URLSearchParams(window.location.search);
     setOrderId(params.get("order"));
-  }, [clear]);
+  }, []);
 
   return (
     <main className="relative min-h-screen bg-[#F6F0E6]">

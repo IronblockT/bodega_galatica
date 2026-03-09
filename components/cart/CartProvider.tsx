@@ -25,7 +25,7 @@ type CartContextValue = {
   addItem: (sku_key: string, qty: number) => void;
   setQty: (sku_key: string, qty: number) => void;
   removeItem: (sku_key: string) => void;
-  clear: () => void;
+  clear: () => Promise<void>;
 
   reserveNow: () => Promise<void>;
 };
@@ -102,11 +102,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems((prev) => prev.filter((x) => x.sku_key !== sku_key));
   };
 
-  const clear = () => {
-    setItems([]);
-    setOrderId(null);
-    setExpiresAt(null);
-    setLastReserveError(null);
+  const clear = async () => {
+    try {
+      if (orderId) {
+        await fetch("/api/cart/release", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ order_id: orderId }),
+        });
+      }
+    } catch (err) {
+      console.error("[cart.clear] failed to release order", err);
+    } finally {
+      setItems([]);
+      setOrderId(null);
+      setExpiresAt(null);
+      setLastReserveError(null);
+    }
   };
 
   const reserveNow = useCallback(async () => {
