@@ -1,22 +1,49 @@
 type CartItem = { sku_key: string; qty: number };
-type CartState = { order_id: string | null; items: CartItem[]; updated_at: number };
 
 const KEY = "bg_cart_v1";
+const ORDER_KEY = "bg_cart_order_v1";
 
-export function loadCart(): CartState {
-  if (typeof window === "undefined") return { order_id: null, items: [], updated_at: Date.now() };
+export function loadCartItems(): CartItem[] {
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { order_id: null, items: [], updated_at: Date.now() };
-    return JSON.parse(raw) as CartState;
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return { order_id: null, items: [], updated_at: Date.now() };
+    return [];
   }
 }
 
-export function saveCart(next: CartState) {
+export function saveCartItems(items: CartItem[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(next));
+  localStorage.setItem(KEY, JSON.stringify(items));
+}
+
+export function loadCartOrder(): { order_id: string | null; expires_at: string | null } {
+  if (typeof window === "undefined") return { order_id: null, expires_at: null };
+  try {
+    const raw = localStorage.getItem(ORDER_KEY);
+    if (!raw) return { order_id: null, expires_at: null };
+    const parsed = JSON.parse(raw);
+    return {
+      order_id: parsed?.order_id ?? null,
+      expires_at: parsed?.expires_at ?? null,
+    };
+  } catch {
+    return { order_id: null, expires_at: null };
+  }
+}
+
+export function saveCartOrder(input: { order_id: string | null; expires_at?: string | null }) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    ORDER_KEY,
+    JSON.stringify({
+      order_id: input.order_id ?? null,
+      expires_at: input.expires_at ?? null,
+    })
+  );
 }
 
 export function addToCart(items: CartItem[], sku_key: string, qty: number) {
@@ -41,8 +68,10 @@ export async function upsertCartOnServer(input: {
       ttl_minutes: input.ttl_minutes ?? 30,
     }),
   });
+
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao atualizar carrinho");
+
   return json as { ok: true; order_id: string; reserve: any };
 }
 
@@ -52,7 +81,9 @@ export async function refreshCartReservation(order_id: string, ttl_minutes = 30)
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ order_id, ttl_minutes }),
   });
+
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao renovar reserva");
+
   return json;
 }

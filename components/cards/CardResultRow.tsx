@@ -1,11 +1,10 @@
-// CardResultRow
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { ConditionSelector } from "./ConditionSelector";
 import { QuantitySelector } from "./QuantitySelector";
 import Link from "next/link";
+import { useCart } from "@/components/cart/CartProvider";
 
 function getTypeLabel(v: any): string {
   if (!v) return "—";
@@ -54,6 +53,8 @@ export function CardResultRow({ card }: any) {
     const cond = encodeURIComponent(String(condition ?? "NM"));
     return `/cartas/${uid}?finish=${finish}&cond=${cond}`;
   }, [card.uid, card.finish, condition]);
+
+  const { addItem } = useCart();
 
   return (
     <div className="flex gap-4 rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur">
@@ -130,6 +131,10 @@ export function CardResultRow({ card }: any) {
           ].join(" ")}
           // ✅ ainda não estamos adicionando no carrinho aqui (isso é o próximo passo)
           onClick={() => {
+            if (!variant?.sku_key || qty <= 0) return;
+
+            addItem(variant.sku_key, qty);
+
             console.log("[add-to-cart]", {
               card_uid: card.uid,
               finish: card.finish,

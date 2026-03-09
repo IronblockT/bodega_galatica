@@ -15,6 +15,18 @@ type NavItem = {
   }>;
 };
 
+type CartItemDetail = {
+  sku_key: string;
+  card_uid: string | null;
+  name: string;
+  subtitle: string | null;
+  image_url: string | null;
+  finish: string | null;
+  condition: string | null;
+  promo_type: string | null;
+  price_brl: number | string | null;
+};
+
 const NAV_ITEMS: NavItem[] = [
   {
     label: 'Star Wars Unlimited',
@@ -207,6 +219,9 @@ export function SiteHeader() {
   const [cartOpen, setCartOpen] = useState(false);
   const cartRef = useRef<HTMLDivElement>(null);
 
+  const [cartDetails, setCartDetails] = useState<CartItemDetail[]>([]);
+  const [cartDetailsLoading, setCartDetailsLoading] = useState(false);
+
   const avatarKey = profile?.avatar_key ?? null;
 
   async function handleLogout() {
@@ -253,6 +268,82 @@ export function SiteHeader() {
   }, []);
 
   const avatarText = (user?.email?.[0] ?? 'U').toUpperCase();
+
+  function formatPrice(value: number | string | null | undefined) {
+    const n = typeof value === "string" ? Number(value) : value;
+    if (!Number.isFinite(n)) return null;
+    return Number(n).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCartDetails() {
+      if (!cartItems.length) {
+        setCartDetails([]);
+        return;
+      }
+
+      try {
+        setCartDetailsLoading(true);
+
+        const res = await fetch("/api/cart/items", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sku_keys: cartItems.map((it) => it.sku_key),
+          }),
+        });
+
+        const json = await res.json();
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error ?? "Falha ao carregar itens do carrinho");
+        }
+
+        if (!cancelled) {
+          setCartDetails(Array.isArray(json.items) ? json.items : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCartDetails([]);
+          console.error("[cart-details]", err);
+        }
+      } finally {
+        if (!cancelled) {
+          setCartDetailsLoading(false);
+        }
+      }
+    }
+
+    loadCartDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cartItems]);
+
+  const cartDetailBySku = useMemo(() => {
+    return new Map(cartDetails.map((item) => [item.sku_key, item]));
+  }, [cartDetails]);
+
+  const cartTotal = useMemo(() => {
+    return cartItems.reduce((sum, it) => {
+      const detail = cartDetailBySku.get(it.sku_key);
+      const price =
+        typeof detail?.price_brl === "string"
+          ? Number(detail.price_brl)
+          : Number(detail?.price_brl ?? 0);
+
+      if (!Number.isFinite(price)) return sum;
+      return sum + price * it.qty;
+    }, 0);
+  }, [cartItems, cartDetailBySku]);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 w-full">
@@ -386,7 +477,15 @@ export function SiteHeader() {
                       {count > 0 ? (
                         <>
                           <div>{count} item(ns)</div>
-                          <div>
+
+                          <div className="mt-1">
+                            Total:{' '}
+                            <span className="text-white/85 font-semibold">
+                              {formatPrice(cartTotal) ?? '—'}
+                            </span>
+                          </div>
+
+                          <div className="mt-1">
                             Reserva:{' '}
                             <span className="text-white/75">
                               {expiresAt ? new Date(expiresAt).toLocaleString('pt-BR') : '—'}
@@ -407,26 +506,56 @@ export function SiteHeader() {
                     {/* itens (versão mínima: sku + qty) */}
                     {cartItems.length > 0 ? (
                       <div className="mt-4 max-h-[280px] overflow-auto pr-1 space-y-2">
-                        {cartItems.slice(0, 8).map((it) => (
-                          <div
-                            key={it.sku_key}
-                            className="rounded-xl border border-white/10 bg-black/60 px-3 py-2"
-                          >
-                            <div className="text-[11px] text-white/45">SKU</div>
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="font-mono text-[11px] text-white/75 truncate">
-                                {it.sku_key}
-                              </div>
-                              <div className="text-xs text-white/80">x{it.qty}</div>
-                            </div>
+                        {cartDetailsLoading ? (
+                          <div className="rounded-xl border border-white/10 bg-black/60 px-3 py-3 text-xs text-white/55">
+                            Carregando itens do carrinho...
                           </div>
-                        ))}
+                        ) : (
+                          <>
+                            {cartItems.slice(0, 8).map((it) => {
+                              const detail = cartDetailBySku.get(it.sku_key);
 
-                        {cartItems.length > 8 ? (
-                          <div className="text-[11px] text-white/45">
-                            +{cartItems.length - 8} item(ns)…
-                          </div>
-                        ) : null}
+                              return (
+                                <div
+                                  key={it.sku_key}
+                                  className="rounded-xl border border-white/10 bg-black/60 px-3 py-2"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-semibold text-white/90 truncate">
+                                        {detail?.name ?? "Carta"}
+                                      </div>
+
+                                      {detail?.subtitle ? (
+                                        <div className="mt-1 text-[11px] text-white/65 truncate">
+                                          {detail.subtitle}
+                                        </div>
+                                      ) : null}
+
+                                      <div className="mt-1 text-[11px] text-white/55">
+                                        {[detail?.finish, detail?.condition].filter(Boolean).join(" • ") || "—"}
+                                      </div>
+
+                                      {detail?.price_brl != null ? (
+                                        <div className="mt-1 text-[11px] text-orange-300 font-medium">
+                                          {formatPrice(detail.price_brl)}
+                                        </div>
+                                      ) : null}
+                                    </div>
+
+                                    <div className="text-xs text-white/80 shrink-0">x{it.qty}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {cartItems.length > 8 ? (
+                              <div className="text-[11px] text-white/45">
+                                +{cartItems.length - 8} item(ns)…
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                       </div>
                     ) : null}
 
@@ -449,15 +578,17 @@ export function SiteHeader() {
                         disabled={!isLoggedIn || cartItems.length === 0 || reserving}
                         onClick={async () => {
                           await reserveNow();
+                          setCartOpen(false);
+                          router.push('/checkout');
                         }}
                         className="
-                          rounded-full bg-orange-500
-                          px-4 py-2 text-xs font-semibold text-[#0B0C10]
-                          hover:bg-orange-600 transition-colors
-                          disabled:opacity-40
-                        "
+    rounded-full bg-orange-500
+    px-4 py-2 text-xs font-semibold text-[#0B0C10]
+    hover:bg-orange-600 transition-colors
+    disabled:opacity-40
+  "
                       >
-                        {reserving ? 'Reservando…' : 'Reservar'}
+                        {reserving ? 'Preparando...' : 'Finalizar compra'}
                       </button>
 
                       <button

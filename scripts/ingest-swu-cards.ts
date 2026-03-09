@@ -29,14 +29,14 @@ function toPgTextArray(v: any): string {
 
   const arr = Array.isArray(v)
     ? v
-        .map((x) => {
-          const s =
-            typeof x === 'string'
-              ? x
-              : x?.name ?? x?.title ?? x?.code ?? x?.value ?? '';
-          return String(s).trim();
-        })
-        .filter(Boolean)
+      .map((x) => {
+        const s =
+          typeof x === 'string'
+            ? x
+            : x?.name ?? x?.title ?? x?.code ?? x?.value ?? '';
+        return String(s).trim();
+      })
+      .filter(Boolean)
     : [];
 
   const escaped = arr.map((s) =>
@@ -201,6 +201,13 @@ async function run() {
       const frontUrl = attr.artFront?.data?.attributes?.url ?? null;
       const backUrl = attr.artBack?.data?.attributes?.url ?? null;
 
+      const printType =
+        frontUrl?.includes("/SWOP_") || frontUrl?.includes("_OP_")
+          ? "op"
+          : frontUrl?.includes("Token")
+            ? "token"
+            : "base";
+
       // ========================
       // Card payload
       // ========================
@@ -237,6 +244,8 @@ async function run() {
         image_front_url: frontUrl,
         image_back_url: backUrl,
         image_thumb_url: frontUrl,
+
+        print_type: printType,
 
         source: 'official_admin',
         source_url: url,

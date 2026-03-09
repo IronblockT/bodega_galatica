@@ -158,72 +158,64 @@ export async function POST(req: Request) {
     };
     const skuIn = buildInFilter(skuKeys);
 
-    // inventário por sku
-    let invRows: any[] = [];
-    try {
-      const invRes = await sb(
-        `swu_inventory_ui?select=sku_key,card_uid,finish,condition,promo_type&sku_key=in.${skuIn}`,
-        { method: "GET" }
-      );
-      invRows = (await invRes.json()) as any[];
-    } catch {
-      const invRes = await sb(
-        `swu_inventory?select=sku_key,card_uid,finish,condition,promo_type&sku_key=in.${skuIn}`,
-        { method: "GET" }
-      );
-      invRows = (await invRes.json()) as any[];
-    }
+    const asNumber = (v: any) => {
+      const n = typeof v === "string" ? Number(v) : v;
+      return Number.isFinite(n) ? Number(n) : NaN;
+    };
 
-    const invBySku = new Map(invRows.map((r) => [r.sku_key, r]));
-    const missing = skuKeys.filter((s) => !invBySku.has(s));
+    // preço atual por SKU = fonte correta
+    const priceRes = await sb(
+      `swu_price_current?select=sku_key,card_uid,finish,promo_type,condition,price_brl&sku_key=in.${skuIn}`,
+      { method: "GET" }
+    );
+    const priceRows = (await priceRes.json()) as any[];
+
+    const priceBySku = new Map(priceRows.map((r) => [r.sku_key, r]));
+    const missing = skuKeys.filter((s) => !priceBySku.has(s));
+
     if (missing.length) {
       return NextResponse.json(
-        { ok: false, error: "SKU inválido no carrinho", detail: { missing } },
+        { ok: false, error: "SKU inválido ou sem preço no carrinho", detail: { missing } },
         { status: 400 }
       );
     }
 
-    const cardUids = Array.from(new Set(invRows.map((r) => r.card_uid).filter(Boolean)));
+    const cardUidSet = new Set<string>();
+    for (const row of priceRows) {
+      if (typeof row?.card_uid === "string" && row.card_uid.trim()) {
+        cardUidSet.add(row.card_uid.trim());
+      }
+    }
+    const cardUids = Array.from(cardUidSet);
 
     let cards: any[] = [];
     if (cardUids.length) {
       const cardUidIn = buildInFilter(cardUids);
       try {
         const cardsRes = await sb(
-          `swu_cards_market_ui?select=card_uid,title,min_price_brl_nm&card_uid=in.${cardUidIn}`,
+          `swu_cards_market_ui?select=card_uid,title&card_uid=in.${cardUidIn}`,
           { method: "GET" }
         );
         cards = (await cardsRes.json()) as any[];
       } catch {
         const cardsRes = await sb(
-          `swu_cards?select=card_uid,card_name&card_uid=in.${cardUidIn}`,
+          `swu_cards?select=card_uid,title&card_uid=in.${cardUidIn}`,
           { method: "GET" }
         );
-        const raw = (await cardsRes.json()) as any[];
-        cards = raw.map((c) => ({
-          card_uid: c.card_uid,
-          title: c.card_name ?? null,
-          min_price_brl_nm: null,
-        }));
+        cards = (await cardsRes.json()) as any[];
       }
     }
 
     const cardMap = new Map(cards.map((c) => [c.card_uid, c]));
 
-    const asNumber = (v: any) => {
-      const n = typeof v === "string" ? Number(v) : v;
-      return Number.isFinite(n) ? Number(n) : NaN;
-    };
-
     const enriched = items.map((it) => {
-      const inv = invBySku.get(it.sku_key)!;
-      const card = inv.card_uid ? cardMap.get(inv.card_uid) : undefined;
+      const priceRow = priceBySku.get(it.sku_key)!;
+      const card = priceRow.card_uid ? cardMap.get(priceRow.card_uid) : undefined;
 
       const title = (card?.title ?? it.sku_key) as string;
+      const unitPrice = asNumber(priceRow?.price_brl ?? 0);
 
-      const unitPrice = asNumber(card?.min_price_brl_nm ?? 0);
       if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-        // ✅ erro “negócio”, não “crash”
         throw new Error(`PRICE_INVALID sku_key=${it.sku_key}`);
       }
 
@@ -233,10 +225,10 @@ export async function POST(req: Request) {
         unit_price_brl: unitPrice,
         snapshot: {
           title,
-          card_uid: inv.card_uid ?? null,
-          finish: inv.finish ?? null,
-          condition: inv.condition ?? null,
-          promo_type: inv.promo_type ?? null,
+          card_uid: priceRow.card_uid ?? null,
+          finish: priceRow.finish ?? null,
+          condition: priceRow.condition ?? null,
+          promo_type: priceRow.promo_type ?? null,
           unit_price_brl: unitPrice,
         },
       };

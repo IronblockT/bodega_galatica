@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCart } from "@/components/cart/CartProvider";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCart } from "@/components/cart/CartProvider";
+import { useAuth } from "@/components/hooks/useAuth";
+
 
 type CartItemDetail = {
   sku_key: string;
@@ -20,9 +22,6 @@ type CartItemDetail = {
 const panelClass =
   "rounded-2xl border border-white/10 bg-[#0B0C10]/70 backdrop-blur shadow-2xl";
 
-const btnPrimary =
-  "rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-[#0B0C10] hover:bg-orange-600 transition-colors disabled:opacity-40";
-
 function formatPrice(value: number | string | null | undefined) {
   const n = typeof value === "string" ? Number(value) : value;
   if (!Number.isFinite(n)) return null;
@@ -32,20 +31,17 @@ function formatPrice(value: number | string | null | undefined) {
   });
 }
 
-export default function CarrinhoPage() {
-  const {
-    items,
-    count,
-    reserving,
-    lastReserveError,
-    orderId,
-    expiresAt,
-    reserveNow,
-    clear,
-  } = useCart();
+export default function CheckoutPage() {
+  const router = useRouter();
+  const { items, count, orderId, expiresAt, clear } = useCart();
+
+  const { user } = useAuth();
 
   const [details, setDetails] = useState<CartItemDetail[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  const [creatingPayment, setCreatingPayment] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +68,7 @@ export default function CarrinhoPage() {
         const json = await res.json();
 
         if (!res.ok || !json?.ok) {
-          throw new Error(json?.error ?? "Falha ao carregar itens do carrinho");
+          throw new Error(json?.error ?? "Falha ao carregar itens do checkout");
         }
 
         if (!cancelled) {
@@ -81,7 +77,7 @@ export default function CarrinhoPage() {
       } catch (err) {
         if (!cancelled) {
           setDetails([]);
-          console.error("[cart-page-details]", err);
+          console.error("[checkout-details]", err);
         }
       } finally {
         if (!cancelled) {
@@ -101,7 +97,7 @@ export default function CarrinhoPage() {
     return new Map(details.map((item) => [item.sku_key, item]));
   }, [details]);
 
-  const cartRows = useMemo(() => {
+  const checkoutRows = useMemo(() => {
     return items.map((it) => {
       const detail = detailBySku.get(it.sku_key);
 
@@ -122,27 +118,108 @@ export default function CarrinhoPage() {
     });
   }, [items, detailBySku]);
 
-  const cartTotal = useMemo(() => {
-    return cartRows.reduce((sum, row) => sum + row.subtotal, 0);
-  }, [cartRows]);
+  const total = useMemo(() => {
+    return checkoutRows.reduce((sum, row) => sum + row.subtotal, 0);
+  }, [checkoutRows]);
 
-  const router = useRouter();
+  if (!items.length) {
+    return (
+      <main className="relative min-h-screen bg-[#F6F0E6]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_10%,rgba(249,115,22,0.12),transparent_60%)]" />
+
+        <div className="relative z-10 mx-auto max-w-4xl px-4 py-10">
+          <div className={panelClass}>
+            <div className="p-6">
+              <h1 className="text-3xl font-semibold text-white">Checkout</h1>
+              <p className="mt-3 text-white/65">
+                Seu carrinho está vazio.
+              </p>
+
+              <div className="mt-6 flex gap-3">
+                <Link
+                  href="/cartas"
+                  className="rounded-full bg-orange-500 px-5 py-3 text-sm font-semibold text-[#0B0C10] hover:bg-orange-600 transition-colors"
+                >
+                  Buscar cartas
+                </Link>
+
+                <Link
+                  href="/carrinho"
+                  className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                >
+                  Voltar ao carrinho
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  async function handleMercadoPagoCheckout() {
+    try {
+      setCheckoutError(null);
+
+      if (!user?.id) {
+        setCheckoutError("Você precisa estar logado para continuar.");
+        return;
+      }
+
+      if (!orderId) {
+        setCheckoutError("Pedido não encontrado. Volte ao carrinho e tente novamente.");
+        return;
+      }
+
+      setCreatingPayment(true);
+
+      const res = await fetch("/api/checkout/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          order_id: orderId,
+          payer: {
+            email: user.email ?? undefined,
+          },
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Falha ao iniciar pagamento");
+      }
+
+      if (!json?.init_point) {
+        throw new Error("O Mercado Pago não retornou a URL de pagamento.");
+      }
+
+      window.location.href = json.init_point;
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : "Falha ao iniciar pagamento");
+    } finally {
+      setCreatingPayment(false);
+    }
+  }
 
   return (
     <main className="relative min-h-screen bg-[#F6F0E6]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_10%,rgba(249,115,22,0.12),transparent_60%)]" />
 
-      <div className="relative z-10 mx-auto max-w-5xl px-4 py-10">
+      <div className="relative z-10 mx-auto max-w-6xl px-4 py-10">
         <div className="mb-8">
           <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-black">
-            Carrinho
+            Checkout
           </h1>
           <p className="mt-4 text-black/65">
-            {count ? `${count} item(ns) no carrinho` : "Seu carrinho está vazio."}
+            Revise seus itens antes de seguir para o pagamento.
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
           <div className={panelClass}>
             <div className="p-6">
               <div className="mb-4 text-xs text-white/60">
@@ -150,30 +227,20 @@ export default function CarrinhoPage() {
                   orderId: <span className="text-white/80">{orderId ?? "—"}</span>
                 </div>
                 <div>
-                  expiresAt: <span className="text-white/80">{expiresAt ?? "—"}</span>
+                  expira em:{" "}
+                  <span className="text-white/80">
+                    {expiresAt ? new Date(expiresAt).toLocaleString("pt-BR") : "—"}
+                  </span>
                 </div>
               </div>
 
-              {lastReserveError ? (
-                <div className="mb-4 rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-sm text-rose-200">
-                  {lastReserveError}
-                </div>
-              ) : null}
-
-              {items.length === 0 ? (
-                <div className="text-sm text-white/60">
-                  Voltar para{" "}
-                  <Link href="/cartas" className="text-orange-300 hover:underline">
-                    Buscar Cartas
-                  </Link>
-                </div>
-              ) : loadingDetails ? (
+              {loadingDetails ? (
                 <div className="rounded-xl border border-white/10 bg-black/60 px-4 py-4 text-sm text-white/60">
-                  Carregando detalhes do carrinho...
+                  Carregando itens...
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {cartRows.map((row) => (
+                  {checkoutRows.map((row) => (
                     <div
                       key={row.sku_key}
                       className="rounded-xl border border-white/10 bg-black/60 px-4 py-4"
@@ -223,22 +290,19 @@ export default function CarrinhoPage() {
                 </div>
               )}
 
-              <div className="mt-6 flex flex-wrap gap-2 justify-end">
+              <div className="mt-6 flex flex-wrap gap-2">
                 <button
-                  className={btnPrimary}
-                  disabled={items.length === 0 || reserving}
-                  onClick={async () => {
-                    await reserveNow();
-                    router.push("/checkout");
-                  }}
+                  type="button"
+                  onClick={() => router.push("/carrinho")}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/85 hover:bg-white/10 transition-colors"
                 >
-                  {reserving ? "Preparando..." : "Finalizar compra"}
+                  Voltar ao carrinho
                 </button>
 
                 <button
-                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 transition-colors disabled:opacity-40"
-                  disabled={items.length === 0}
-                  onClick={clear}
+                  type="button"
+                  onClick={() => clear()}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 transition-colors"
                 >
                   Limpar carrinho
                 </button>
@@ -248,7 +312,9 @@ export default function CarrinhoPage() {
 
           <aside className={panelClass}>
             <div className="p-6">
-              <div className="text-sm font-semibold text-white/90">Resumo do pedido</div>
+              <div className="text-sm font-semibold text-white/90">
+                Resumo do pedido
+              </div>
 
               <div className="mt-4 space-y-3 text-sm">
                 <div className="flex items-center justify-between text-white/70">
@@ -259,26 +325,30 @@ export default function CarrinhoPage() {
                 <div className="flex items-center justify-between text-white/90">
                   <span>Total</span>
                   <span className="text-lg font-semibold text-orange-300">
-                    {formatPrice(cartTotal) ?? "—"}
+                    {formatPrice(total) ?? "—"}
                   </span>
                 </div>
               </div>
 
+              {checkoutError ? (
+                <div className="mb-4 rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-sm text-rose-200">
+                  {checkoutError}
+                </div>
+              ) : null}
+
               <div className="mt-6">
                 <button
+                  type="button"
+                  onClick={handleMercadoPagoCheckout}
+                  disabled={creatingPayment || loadingDetails || !orderId || items.length === 0}
                   className="w-full rounded-full bg-orange-500 px-4 py-3 text-sm font-semibold text-[#0B0C10] hover:bg-orange-600 transition-colors disabled:opacity-40"
-                  disabled={items.length === 0 || reserving}
-                  onClick={async () => {
-                    await reserveNow();
-                    router.push("/checkout");
-                  }}
                 >
-                  {reserving ? "Preparando..." : "Finalizar compra"}
+                  {creatingPayment ? "Abrindo Mercado Pago..." : "Pagar com Mercado Pago"}
                 </button>
               </div>
 
               <div className="mt-3 text-xs text-white/45">
-                Seus itens serão preparados para a etapa de pagamento.
+                Você será redirecionado ao Mercado Pago para concluir o pagamento.
               </div>
             </div>
           </aside>
