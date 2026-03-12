@@ -64,7 +64,7 @@ export default function Home() {
             <div className="absolute h-64 w-64 rounded-full bg-orange-400/20 blur-3xl -translate-x-16 translate-y-10" />
 
             <Image
-              src="/swu/secrets-of-power-hero.png"
+              src="/swu/law-pre-hero.png"
               alt="Star Wars: Unlimited — Secrets of Power"
               width={700}
               height={520}

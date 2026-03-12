@@ -18,6 +18,7 @@ const SETS: SetItem[] = [
     { code: 'JTL', name: 'Jump to Lightspeed', logoSrc: '/swu/sets/jtl.png', href: '/cartas?set=jtl' },
     { code: 'LOF', name: 'Legends of the Force', logoSrc: '/swu/sets/lof.png', href: '/cartas?set=lof' },
     { code: 'SEC', name: 'Secrets of Power', logoSrc: '/swu/sets/sec.png', href: '/cartas?set=sec' },
+    { code: 'LAW', name: 'A Lawless Time', logoSrc: '/swu/sets/law.png', href: '/cartas?set=law' },
 ];
 
 export function SetCarousel() {

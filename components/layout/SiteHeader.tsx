@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/hooks/useAuth';
 import { useCart } from '@/components/cart/CartProvider';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 type NavItem = {
   label: string;
@@ -35,24 +35,29 @@ const NAV_ITEMS: NavItem[] = [
         title: 'Cartas',
         links: [
           { label: 'Todas as Cartas', href: '/cartas' },
-          { label: 'Líderes', href: '/cartas?tipo=lider' },
-          { label: 'Unidades', href: '/cartas?tipo=unidade' },
-          { label: 'Eventos', href: '/cartas?tipo=evento' },
-          { label: 'Upgrades', href: '/cartas?tipo=upgrade' },
+          { label: 'Líderes', href: '/cartas?type=Leader&page=1' },
+          { label: 'Unidades', href: '/cartas?type=Unit&page=1' },
+          { label: 'Eventos', href: '/cartas?type=Event&page=1' },
+          { label: 'Upgrades', href: '/cartas?type=Upgrade&page=1' },
         ],
       },
       {
         title: 'Coleções',
         links: [
-          { label: 'Spark of Rebellion', href: '/cartas?set=sor' },
-          { label: 'Shadows of the Galaxy', href: '/cartas?set=shd' },
+          { label: 'Spark of Rebellion', href: '/cartas?set=SOR&page=1' },
+          { label: 'Shadows of the Galaxy', href: '/cartas?set=SHD&page=1' },
+          { label: 'Twilight of the Republic', href: '/cartas?set=TWI&page=1' },
+          { label: 'Jump to Lightspeed', href: '/cartas?set=JTL&page=1' },
+          { label: 'Legends of the Force', href: '/cartas?set=LOF&page=1' },
+          { label: 'Secrets of Power', href: '/cartas?set=SEC&page=1' },
+          { label: 'A Lawless Time', href: '/cartas?set=LAW&page=1' },
         ],
       },
       {
         title: 'Atalhos',
         links: [
-          { label: 'Mais Vendidas', href: '/cartas?sort=mais_vendidas' },
-          { label: 'Novidades', href: '/cartas?sort=novidades' },
+          { label: 'Mais Vendidas', href: '/cartas' },
+          { label: 'Novidades', href: '/cartas' },
         ],
       },
     ],
@@ -62,11 +67,11 @@ const NAV_ITEMS: NavItem[] = [
     sections: [
       {
         links: [
-          { label: 'Sleeves', href: '/acessorios?s=sleeves' },
-          { label: 'Deck Boxes', href: '/acessorios?s=deck-boxes' },
-          { label: 'Playmats', href: '/acessorios?s=playmats' },
-          { label: 'Binders', href: '/acessorios?s=binders' },
-          { label: 'Marcadores', href: '/acessorios?s=marcadores' },
+          { label: 'Sleeves', href: '/acessorios' },
+          { label: 'Deck Boxes', href: '/acessorios' },
+          { label: 'Playmats', href: '/acessorios' },
+          { label: 'Binders', href: '/acessorios' },
+          { label: 'Marcadores', href: '/acessorios' },
         ],
       },
     ],
@@ -148,9 +153,9 @@ function Dropdown({
                   )}
 
                   <div className="flex flex-col gap-1">
-                    {section.links.map((l) => (
+                    {section.links.map((l, linkIdx) => (
                       <Link
-                        key={l.href}
+                        key={`${l.href}-${l.label}-${linkIdx}`}
                         href={l.href}
                         onClick={onClose}
                         className="
@@ -203,6 +208,10 @@ function CartIcon({ className = 'h-5 w-5' }: { className?: string }) {
 
 export function SiteHeader() {
   const router = useRouter();
+
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [openLabel, setOpenLabel] = useState<string | null>(null);
   const items = useMemo(() => NAV_ITEMS, []);
@@ -345,6 +354,30 @@ export function SiteHeader() {
     }, 0);
   }, [cartItems, cartDetailBySku]);
 
+  useEffect(() => {
+    const currentQ = searchParams.get("q") ?? "";
+    setSearchQuery(currentQ);
+  }, [searchParams]);
+
+  function handleSearchSubmit(e?: React.FormEvent<HTMLFormElement>) {
+    e?.preventDefault();
+
+    const term = searchQuery.trim();
+
+    const params = new URLSearchParams();
+
+    if (term) {
+      params.set("q", term);
+    }
+
+    params.set("page", "1");
+
+    router.push(`/cartas?${params.toString()}`);
+    setOpenLabel(null);
+    setAccountOpen(false);
+    setCartOpen(false);
+  }
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 w-full">
       {/* HEADER PRINCIPAL */}
@@ -377,28 +410,33 @@ export function SiteHeader() {
 
           {/* Busca (centro) */}
           <div className="mx-6 hidden w-full max-w-xl md:block">
-            <div className="relative">
+            <form onSubmit={handleSearchSubmit} className="relative">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35">
                 ⌕
               </span>
 
               <input
                 type="search"
-                placeholder="Buscar na Bodega Galática"
+                placeholder="Buscar cartas na Bodega Galática"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className={[
                   'w-full rounded-2xl border border-white/10 bg-white/5',
-                  'pl-10 pr-24 py-3 text-sm text-white placeholder:text-white/40',
+                  'pl-10 pr-28 py-3 text-sm text-white placeholder:text-white/40',
                   'outline-none focus:border-white/25',
                   'shadow-[0_12px_40px_rgba(0,0,0,.35)]',
                 ].join(' ')}
               />
 
-              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center gap-2">
-                <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/55">
-                  Ctrl K
-                </span>
+              <div className="absolute inset-y-0 right-3 flex items-center gap-2">
+                <button
+                  type="submit"
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/75 hover:bg-white/10 hover:text-white transition"
+                >
+                  Buscar
+                </button>
               </div>
-            </div>
+            </form>
           </div>
 
           {/* Ações (direita) */}
