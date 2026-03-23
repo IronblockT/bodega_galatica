@@ -28,7 +28,8 @@ export function CardResultRow({ card }: any) {
   // ✅ NOVO: qty controlado (para o carrinho)
   const [qty, setQty] = useState(1);
 
-  const variant = card.variants?.[condition] ?? { price: 0, stock: 0 };
+  const variant = card.variants?.[condition] ?? { price: 0, stock: 0, promo_type: "—" };
+  const promoTypeLabel = variant?.promo_type ?? "—";
 
   // ✅ garante qty válido ao trocar condição/estoque
   useEffect(() => {
@@ -87,7 +88,7 @@ export function CardResultRow({ card }: any) {
           </h3>
 
           <p className="text-xs text-white/60">
-            {typeLabel} • {card.set} • {card.finish}
+            {typeLabel} • {card.set} • {card.finish} • {promoTypeLabel}
           </p>
 
           {card.rules_text ? (

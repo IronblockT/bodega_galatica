@@ -79,10 +79,7 @@ export function CardSearchResults() {
   const [total, setTotal] = useState(0);
 
   const page = Math.max(parseInt(sp.get("page") ?? "1", 10), 1);
-  const pageSize = Math.min(
-    Math.max(parseInt(sp.get("pageSize") ?? "10", 10), 1),
-    50
-  );
+  const pageSize = 20;
 
   const q = sp.get("q") ?? "";
   const setCode = sp.get("set") ?? "";
