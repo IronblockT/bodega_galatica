@@ -20,7 +20,7 @@ type CardUiRow = {
   subtitle: string | null;
   expansion_code: string | null;
   rarity_label: string | null;
-  image_front_url: string | null;
+  image_thumb_url: string | null;
 };
 
 function normalizeImageSrc(src: string): string {
@@ -61,7 +61,7 @@ export async function GET() {
     const { data: cardsData, error: cardsError } = await supabase
       .from("swu_cards_ui")
       .select(
-        "card_uid, title, subtitle, expansion_code, rarity_label, image_front_url"
+        "card_uid, title, subtitle, expansion_code, rarity_label, image_thumb_url"
       )
       .in("card_uid", cardUids);
 
@@ -87,7 +87,7 @@ export async function GET() {
       const finish = String(row.finish ?? "standard");
       const condition = String(row.condition ?? "NM");
 
-      const rawImageSrc = card?.image_front_url || "/swu/cards/placeholder.png";
+      const rawImageSrc = card?.image_thumb_url || "/swu/cards/placeholder.png";
       const normalizedImageSrc = normalizeImageSrc(rawImageSrc);
 
       return {
