@@ -23,6 +23,15 @@ type CardUiRow = {
   image_front_url: string | null;
 };
 
+function normalizeImageSrc(src: string): string {
+  if (!src.startsWith("http")) return src;
+
+  return src.replace(
+    /^https:\/\/cdn\.starwarsunlimited\.com\/+/,
+    "https://cdn.starwarsunlimited.com/"
+  );
+}
+
 export async function GET() {
   try {
     const { data: trendingData, error: trendingError } = await supabase
@@ -51,7 +60,9 @@ export async function GET() {
 
     const { data: cardsData, error: cardsError } = await supabase
       .from("swu_cards_ui")
-      .select("card_uid, title, subtitle, expansion_code, rarity_label, image_front_url")
+      .select(
+        "card_uid, title, subtitle, expansion_code, rarity_label, image_front_url"
+      )
       .in("card_uid", cardUids);
 
     if (cardsError) {
@@ -62,7 +73,9 @@ export async function GET() {
     }
 
     const cards = (cardsData ?? []) as CardUiRow[];
-    const cardByUid = new Map(cards.map((c) => [c.card_uid, c]));
+    const cardByUid = new Map<string, CardUiRow>(
+      cards.map((c) => [c.card_uid, c])
+    );
 
     const items = trending.map((row) => {
       const card = cardByUid.get(row.card_uid);
@@ -73,6 +86,9 @@ export async function GET() {
 
       const finish = String(row.finish ?? "standard");
       const condition = String(row.condition ?? "NM");
+
+      const rawImageSrc = card?.image_front_url || "/swu/cards/placeholder.png";
+      const normalizedImageSrc = normalizeImageSrc(rawImageSrc);
 
       return {
         id: row.card_uid,
@@ -88,15 +104,24 @@ export async function GET() {
         finish,
         promoType: row.promo_type,
         condition,
-        imageSrc: card?.image_front_url || "/swu/cards/placeholder.png",
-        href: `/cartas/${encodeURIComponent(row.card_uid)}?finish=${encodeURIComponent(finish)}&cond=${encodeURIComponent(condition)}`,
+        imageSrc: normalizedImageSrc,
+        href: `/cartas/${encodeURIComponent(
+          row.card_uid
+        )}?finish=${encodeURIComponent(finish)}&cond=${encodeURIComponent(
+          condition
+        )}`,
       };
     });
 
     return NextResponse.json({ ok: true, items });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Erro interno ao buscar trending cards.";
+
     return NextResponse.json(
-      { ok: false, error: error?.message ?? "Erro interno ao buscar trending cards." },
+      { ok: false, error: message },
       { status: 500 }
     );
   }
