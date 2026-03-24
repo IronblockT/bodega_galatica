@@ -36,6 +36,7 @@ export function Bounties() {
       try {
         const res = await fetch("/api/cards/trending", { cache: "no-store" });
         const json = await res.json();
+        console.log("[Bounties API response]", json);
 
         if (!active) return;
 
@@ -58,6 +59,8 @@ export function Bounties() {
       active = false;
     };
   }, []);
+
+  console.log("[Bounties items state]", items);
 
   return (
     <section className="relative overflow-hidden bg-sand">
@@ -96,56 +99,70 @@ export function Bounties() {
                 </div>
               </div>
             ))
-            : items.map((c) => (
-              <Link
-                key={c.id}
-                href={c.href}
-                className="
-                  group rounded-2xl bg-white/80 backdrop-blur
-                  ring-1 ring-black/5 shadow-premium
-                  hover:shadow-[0_18px_50px_rgba(0,0,0,.14)]
-                  transition
-                "
-              >
-                <div className="relative w-full bg-[#0B0C10] flex items-center justify-center py-4">
-                  <img
-                    src={c.imageSrc}
-                    alt={c.name}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="h-[220px] w-auto object-contain transition-transform group-hover:scale-[1.02]"
-                  />
+            : items.map((c) => {
+              console.log("[Bounties render item]", {
+                id: c.id,
+                name: c.name,
+                imageSrc: c.imageSrc,
+              });
 
-                  <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
-                    <span className="rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white">
-                      {c.setCode}
-                    </span>
-                    <span className="rounded-full bg-white/85 px-2 py-1 text-[10px] font-semibold text-black">
-                      {c.rarity}
-                    </span>
-                  </div>
+              return (
+                <Link
+                  key={c.id}
+                  href={c.href}
+                  className="
+                    group rounded-2xl bg-white/80 backdrop-blur
+                    ring-1 ring-black/5 shadow-premium
+                    hover:shadow-[0_18px_50px_rgba(0,0,0,.14)]
+                    transition
+                  "
+                >
+                  <div className="relative w-full bg-[#0B0C10] flex items-center justify-center py-4 border-4 border-red-500">
+                    <img
+                      src={c.imageSrc}
+                      alt={c.name}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="h-[220px] w-auto object-contain transition-transform group-hover:scale-[1.02] border-4 border-green-500"
+                      onLoad={() => {
+                        console.log("[Bounties image loaded]", c.imageSrc);
+                      }}
+                      onError={() => {
+                        console.log("[Bounties image error]", c.imageSrc);
+                      }}
+                    />
 
-                  <div className="absolute right-3 bottom-3 z-10 rounded-full bg-orange-500/90 px-2 py-1 text-[10px] font-semibold text-white shadow">
-                    +{Number(c.spikePct || 0).toFixed(0)}%
-                  </div>
-                </div>
-
-                <div className="flex min-h-[92px] flex-col p-3">
-                  <div className="line-clamp-2 text-sm font-semibold text-black">
-                    {c.name}
-                  </div>
-
-                  <div className="mt-auto pt-3 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-orange-600">
-                      {formatBRL(c.price)}
+                    <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
+                      <span className="rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white">
+                        {c.setCode}
+                      </span>
+                      <span className="rounded-full bg-white/85 px-2 py-1 text-[10px] font-semibold text-black">
+                        {c.rarity}
+                      </span>
                     </div>
-                    <span className="text-xs text-black/50 group-hover:text-black/70 transition">
-                      Ver →
-                    </span>
+
+                    <div className="absolute right-3 bottom-3 z-10 rounded-full bg-orange-500/90 px-2 py-1 text-[10px] font-semibold text-white shadow">
+                      +{Number(c.spikePct || 0).toFixed(0)}%
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+
+                  <div className="flex min-h-[92px] flex-col p-3">
+                    <div className="line-clamp-2 text-sm font-semibold text-black">
+                      {c.name}
+                    </div>
+
+                    <div className="mt-auto pt-3 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-orange-600">
+                        {formatBRL(c.price)}
+                      </div>
+                      <span className="text-xs text-black/50 group-hover:text-black/70 transition">
+                        Ver →
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
         </div>
 
         {!loading && items.length === 0 ? (
