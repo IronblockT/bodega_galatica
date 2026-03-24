@@ -113,6 +113,7 @@ export function Bounties() {
                     src={c.imageSrc}
                     alt={c.name}
                     fill
+                    unoptimized
                     className="object-contain p-2 group-hover:scale-[1.02] transition-transform"
                   />
 
