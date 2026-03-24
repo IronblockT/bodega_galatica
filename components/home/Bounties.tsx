@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -109,12 +108,14 @@ export function Bounties() {
                   "
               >
                 <div className="relative aspect-[3/4] w-full bg-[#0B0C10]">
-                  <Image
+                  <img
                     src={c.imageSrc}
                     alt={c.name}
-                    fill
-                    unoptimized
-                    className="object-contain p-2 group-hover:scale-[1.02] transition-transform"
+                    loading="lazy"
+                    className="absolute inset-0 h-full w-full object-contain p-2 transition-transform group-hover:scale-[1.02]"
+                    onError={(e) => {
+                      e.currentTarget.src = "/swu/cards/placeholder.png";
+                    }}
                   />
 
                   <div className="absolute left-3 top-3 flex items-center gap-2">
