@@ -107,13 +107,13 @@ export function Bounties() {
                   transition
                 "
               >
-                <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0B0C10] flex items-center justify-center">
+                <div className="relative w-full bg-[#0B0C10] flex items-center justify-center py-4">
                   <img
                     src={c.imageSrc}
                     alt={c.name}
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    className="max-h-full max-w-full object-contain p-2 transition-transform group-hover:scale-[1.02]"
+                    className="h-[220px] w-auto object-contain transition-transform group-hover:scale-[1.02]"
                   />
 
                   <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
