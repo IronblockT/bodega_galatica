@@ -84,7 +84,7 @@ export function Bounties() {
 
         <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
           {loading
-            ? Array.from({ length: 6 }).map((_, i) => (
+            ? Array.from({ length: 10 }).map((_, i) => (
               <div
                 key={`loading-${i}`}
                 className="rounded-2xl bg-white/70 ring-1 ring-black/5 shadow-premium overflow-hidden animate-pulse"
@@ -101,24 +101,22 @@ export function Bounties() {
                 key={c.id}
                 href={c.href}
                 className="
-                    group rounded-2xl bg-white/80 backdrop-blur
-                    ring-1 ring-black/5 shadow-premium
-                    hover:shadow-[0_18px_50px_rgba(0,0,0,.14)]
-                    transition
-                  "
+                  group rounded-2xl bg-white/80 backdrop-blur
+                  ring-1 ring-black/5 shadow-premium
+                  hover:shadow-[0_18px_50px_rgba(0,0,0,.14)]
+                  transition
+                "
               >
-                <div className="relative aspect-[3/4] w-full bg-[#0B0C10]">
+                <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0B0C10] flex items-center justify-center">
                   <img
                     src={c.imageSrc}
                     alt={c.name}
                     loading="lazy"
-                    className="absolute inset-0 h-full w-full object-contain p-2 transition-transform group-hover:scale-[1.02]"
-                    onError={(e) => {
-                      e.currentTarget.src = "/swu/cards/placeholder.png";
-                    }}
+                    referrerPolicy="no-referrer"
+                    className="max-h-full max-w-full object-contain p-2 transition-transform group-hover:scale-[1.02]"
                   />
 
-                  <div className="absolute left-3 top-3 flex items-center gap-2">
+                  <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
                     <span className="rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white">
                       {c.setCode}
                     </span>
@@ -127,7 +125,7 @@ export function Bounties() {
                     </span>
                   </div>
 
-                  <div className="absolute right-3 bottom-3 rounded-full bg-orange-500/90 px-2 py-1 text-[10px] font-semibold text-white shadow">
+                  <div className="absolute right-3 bottom-3 z-10 rounded-full bg-orange-500/90 px-2 py-1 text-[10px] font-semibold text-white shadow">
                     +{Number(c.spikePct || 0).toFixed(0)}%
                   </div>
                 </div>
