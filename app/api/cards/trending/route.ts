@@ -20,20 +20,12 @@ type CardUiRow = {
   subtitle: string | null;
   expansion_code: string | null;
   rarity_label: string | null;
-  image_thumb_url: string | null;
+  image_front_url: string | null;
 };
-
-function normalizeImageSrc(src: string): string {
-  if (!src.startsWith("http")) return src;
-
-  return src.replace(
-    /^https:\/\/cdn\.starwarsunlimited\.com\/+/,
-    "https://cdn.starwarsunlimited.com/"
-  );
-}
 
 export async function GET() {
   try {
+    // 1️⃣ Trending base
     const { data: trendingData, error: trendingError } = await supabase
       .from("swu_trending_cards")
       .select(
@@ -56,12 +48,13 @@ export async function GET() {
       return NextResponse.json({ ok: true, items: [] });
     }
 
+    // 2️⃣ Buscar dados das cartas
     const cardUids = Array.from(new Set(trending.map((r) => r.card_uid)));
 
     const { data: cardsData, error: cardsError } = await supabase
       .from("swu_cards_ui")
       .select(
-        "card_uid, title, subtitle, expansion_code, rarity_label, image_thumb_url"
+        "card_uid, title, subtitle, expansion_code, rarity_label, image_front_url"
       )
       .in("card_uid", cardUids);
 
@@ -73,10 +66,12 @@ export async function GET() {
     }
 
     const cards = (cardsData ?? []) as CardUiRow[];
+
     const cardByUid = new Map<string, CardUiRow>(
       cards.map((c) => [c.card_uid, c])
     );
 
+    // 3️⃣ Montar resposta FINAL (ALINHADA COM /api/cards)
     const items = trending.map((row) => {
       const card = cardByUid.get(row.card_uid);
 
@@ -87,24 +82,31 @@ export async function GET() {
       const finish = String(row.finish ?? "standard");
       const condition = String(row.condition ?? "NM");
 
-      const rawImageSrc = card?.image_thumb_url || "/swu/cards/placeholder.png";
-      const normalizedImageSrc = normalizeImageSrc(rawImageSrc);
-
       return {
         id: row.card_uid,
         card_uid: row.card_uid,
         sku_key: row.sku_key,
-        name: fullName,
-        setCode: card?.expansion_code ?? "SWU",
-        rarity: card?.rarity_label ?? "—",
+
+        // 🔥 mesmos nomes do sistema
+        title,
+        subtitle,
+        expansion_code: card?.expansion_code ?? "SWU",
+        rarity_label: card?.rarity_label ?? "—",
+
+        // 🔥 CRÍTICO — NÃO MEXER
+        image_front_url:
+          card?.image_front_url ?? "/swu/cards/placeholder.png",
+
+        // dados de mercado
         price: Number(row.preco_atual ?? 0),
         previousPrice: Number(row.preco_anterior ?? 0),
         spikeBrl: Number(row.aumento_brl ?? 0),
         spikePct: Number(row.aumento_pct ?? 0),
+
         finish,
-        promoType: row.promo_type,
+        promo_type: row.promo_type,
         condition,
-        imageSrc: normalizedImageSrc,
+
         href: `/cartas/${encodeURIComponent(
           row.card_uid
         )}?finish=${encodeURIComponent(finish)}&cond=${encodeURIComponent(
