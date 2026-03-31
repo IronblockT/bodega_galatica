@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { BackToTop } from "@/components/layout/BackToTop";
-import { RecebimentoClient } from "./RecebimentoClient";
+import { RecebimentoClient } from "./recebimento-client";
 
 export default function VenderRecebimentoPage() {
   return (

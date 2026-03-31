@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { BackToTop } from "@/components/layout/BackToTop";
 
@@ -44,11 +45,33 @@ type CardRow = {
   rarity_label: string | null;
 };
 
+async function getBaseUrl() {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (siteUrl) {
+    return siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`;
+  }
+
+  if (appUrl) {
+    return appUrl.startsWith("http") ? appUrl : `https://${appUrl}`;
+  }
+
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+
+  if (!host) {
+    throw new Error(
+      "Base URL não pôde ser resolvida. Configure NEXT_PUBLIC_SITE_URL em produção."
+    );
+  }
+
+  return `${proto}://${host}`;
+}
+
 async function getQuote(sku: string, qty: number): Promise<Quote | null> {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
+  const baseUrl = await getBaseUrl();
 
   const res = await fetch(`${baseUrl}/api/buylist/quote`, {
     method: "POST",
@@ -70,8 +93,14 @@ async function getQuote(sku: string, qty: number): Promise<Quote | null> {
 }
 
 async function getCard(cardUid: string): Promise<CardRow | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "NEXT_PUBLIC_SUPABASE_URL ou NEXT_PUBLIC_SUPABASE_ANON_KEY não estão configuradas em produção."
+    );
+  }
 
   const url =
     `${supabaseUrl}/rest/v1/swu_cards_ui` +
@@ -273,7 +302,7 @@ export default async function VenderRevisaoPage({
                     className="rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white"
                   >
                     Voltar
-                  </Link>                  
+                  </Link>
 
                   {quote.is_buylist_available ? (
                     <Link
