@@ -682,14 +682,7 @@ function MeusPedidosContent() {
                 {formatMoneyBRL(summary.totalValue)}
               </div>
             </div>
-          </div>
-
-          <div className="mb-6 rounded-2xl border border-dashed border-black/15 bg-white/40 px-5 py-4 text-sm text-black/70">
-            <div className="font-semibold text-black">Debug temporário da integração</div>
-            <div className="mt-2">Compras carregadas: {orders.length}</div>
-            <div>Vendas para a loja carregadas: {sellOffers.length}</div>
-            <div>Total renderizado na lista: {historyEntries.length}</div>
-          </div>
+          </div>          
 
           <div className={panelClass}>
             <div className="p-6">
