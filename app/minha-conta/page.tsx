@@ -56,6 +56,30 @@ type PurchaseSummary = {
   latestOrder: OrderRow | null;
 };
 
+type BuylistOfferRow = {
+  id: string;
+  user_id: string;
+  status: string;
+  payout_type: 'cash' | 'store_credit';
+  final_amount: number | string;
+  manual_review_required: boolean;
+  review_reason: string | null;
+  created_at: string;
+};
+
+type BuylistOfferItemRow = {
+  id: string;
+  offer_id: string;
+  quantity: number;
+  buy_price_total: number | string;
+};
+
+type SellSummary = {
+  totalOffers: number;
+  totalItems: number;
+  latestOffer: BuylistOfferRow | null;
+};
+
 function onlyDigits(v: string) {
   return (v || '').replace(/\D/g, '');
 }
@@ -84,6 +108,27 @@ function mapOrderStatusLabel(status: string | null | undefined) {
   if (s === 'cancelled') return 'Cancelado';
   if (s === 'draft') return 'Rascunho';
   return status ?? '—';
+}
+
+function mapSellOfferStatusLabel(status: string | null | undefined) {
+  const s = String(status ?? '').toLowerCase();
+
+  if (s === 'draft') return 'Rascunho';
+  if (s === 'submitted') return 'Enviado';
+  if (s === 'pending_review') return 'Em análise';
+  if (s === 'approved') return 'Aprovado';
+  if (s === 'rejected') return 'Rejeitado';
+  if (s === 'received') return 'Recebido';
+  if (s === 'paid') return 'Pago';
+  if (s === 'cancelled') return 'Cancelado';
+
+  return status ?? '—';
+}
+
+function mapPayoutTypeLabel(payoutType: 'cash' | 'store_credit' | null | undefined) {
+  if (payoutType === 'cash') return 'Dinheiro';
+  if (payoutType === 'store_credit') return 'Crédito na loja';
+  return '—';
 }
 
 const panelClass = 'rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur';
@@ -116,6 +161,13 @@ export default function MinhaContaPage() {
     totalOrders: 0,
     totalItems: 0,
     latestOrder: null,
+  });
+
+  const [sellOffers, setSellOffers] = useState<BuylistOfferRow[]>([]);
+  const [sellSummary, setSellSummary] = useState<SellSummary>({
+    totalOffers: 0,
+    totalItems: 0,
+    latestOffer: null,
   });
 
   const email = useMemo(() => user?.email ?? null, [user]);
@@ -234,6 +286,56 @@ export default function MinhaContaPage() {
           totalOrders: safeOrders.length,
           totalItems,
           latestOrder: safeOrders[0] ?? null,
+        });
+      }
+
+      const { data: sellOfferRows, error: sellOfferErr } = await supabase
+        .from('buylist_offers')
+        .select('id, user_id, status, payout_type, final_amount, manual_review_required, review_reason, created_at')
+        .eq('user_id', user.id)
+        .neq('status', 'draft')
+        .order('created_at', { ascending: false });
+
+      if (!mounted) return;
+
+      if (sellOfferErr) {
+        setErrorMsg(`Erro ao carregar vendas: ${sellOfferErr.message}`);
+        setLoading(false);
+        return;
+      }
+
+      const safeSellOffers = (sellOfferRows ?? []) as BuylistOfferRow[];
+      setSellOffers(safeSellOffers);
+
+      if (safeSellOffers.length === 0) {
+        setSellSummary({
+          totalOffers: 0,
+          totalItems: 0,
+          latestOffer: null,
+        });
+      } else {
+        const offerIds = safeSellOffers.map((offer) => offer.id);
+
+        const { data: sellItemRows, error: sellItemErr } = await supabase
+          .from('buylist_offer_items')
+          .select('id, offer_id, quantity, buy_price_total')
+          .in('offer_id', offerIds);
+
+        if (!mounted) return;
+
+        if (sellItemErr) {
+          setErrorMsg(`Erro ao carregar itens das vendas: ${sellItemErr.message}`);
+          setLoading(false);
+          return;
+        }
+
+        const safeSellItems = (sellItemRows ?? []) as BuylistOfferItemRow[];
+        const totalSellItems = safeSellItems.reduce((acc, item) => acc + Number(item.quantity ?? 0), 0);
+
+        setSellSummary({
+          totalOffers: safeSellOffers.length,
+          totalItems: totalSellItems,
+          latestOffer: safeSellOffers[0] ?? null,
         });
       }
 
@@ -506,11 +608,51 @@ export default function MinhaContaPage() {
                       {/* VENDAS */}
                       <div className="rounded-xl border border-white/10 bg-black/50 p-4">
                         <div className="text-xs text-white/60">Vendas</div>
-                        <div className="mt-1 text-sm font-semibold text-white">0 pedidos</div>
 
-                        <div className="mt-2 text-xs text-white/55">
-                          Você ainda não realizou nenhuma venda.
+                        <div className="mt-1 text-sm font-semibold text-white">
+                          {sellSummary.totalOffers} {sellSummary.totalOffers === 1 ? 'oferta' : 'ofertas'}
                         </div>
+
+                        {sellSummary.totalOffers === 0 ? (
+                          <div className="mt-2 text-xs text-white/55">
+                            Você ainda não realizou nenhuma venda.
+                          </div>
+                        ) : (
+                          <div className="mt-3 space-y-1 text-xs text-white/65">
+                            <div>
+                              <span className="text-white/45">Última venda:</span>{' '}
+                              <span className="text-white/85">
+                                {formatDateBR(sellSummary.latestOffer?.created_at)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-white/45">Status:</span>{' '}
+                              <span className="text-white/85">
+                                {mapSellOfferStatusLabel(sellSummary.latestOffer?.status)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-white/45">Tipo de pagamento:</span>{' '}
+                              <span className="text-white/85">
+                                {mapPayoutTypeLabel(sellSummary.latestOffer?.payout_type)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-white/45">Valor:</span>{' '}
+                              <span className="text-white/85">
+                                {formatMoneyBRL(sellSummary.latestOffer?.final_amount)}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-white/45">Itens vendidos:</span>{' '}
+                              <span className="text-white/85">{sellSummary.totalItems}</span>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="mt-4">
                           <Link href="/meus-pedidos?tipo=vendas" className={secondaryBtn}>
@@ -525,11 +667,7 @@ export default function MinhaContaPage() {
                         Ver histórico
                       </Link>
                     </div>
-
-                    <div className="mt-3 text-[11px] text-white/45">
-                      * O resumo de compras já está ativo. A área de vendas e o histórico completo
-                      ainda serão expandidos com mais detalhes.
-                    </div>
+                    
                   </div>
                 </div>
               </div>

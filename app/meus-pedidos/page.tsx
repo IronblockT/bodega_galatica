@@ -38,8 +38,91 @@ type OrderItemRow = {
 };
 
 type OrderWithItems = OrderRow & {
-  items: OrderItemRow[];
+  items: EnrichedOrderItemRow[];
   totalItems: number;
+};
+
+type EnrichedOrderItemRow = OrderItemRow & {
+  card_title?: string | null;
+  card_subtitle?: string | null;
+};
+
+type HistoryEntryItem = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  qty: number;
+  unit_amount: number | string;
+  total_amount: number | string;
+  finish?: string | null;
+  condition?: string | null;
+  promo_type?: string | null;
+};
+
+type HistoryEntry = {
+  id: string;
+  kind: 'purchase' | 'sell_offer';
+  status: string;
+  created_at: string;
+  total_amount: number | string;
+  currency?: string | null;
+  payout_type?: 'cash' | 'store_credit' | null;
+  manual_review_required?: boolean;
+  review_reason?: string | null;
+  item_count: number;
+  items: HistoryEntryItem[];
+};
+
+type BuylistOfferRow = {
+  id: string;
+  user_id: string;
+  status: string;
+  payout_type: 'cash' | 'store_credit';
+  subtotal_amount: number | string;
+  final_amount: number | string;
+  cash_reserved_amount: number | string;
+  manual_review_required: boolean;
+  review_reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type BuylistOfferItemRow = {
+  id: string;
+  offer_id: string;
+  sku_key: string;
+  pricing_rule_id: string | null;
+  card_uid: string;
+  finish: string;
+  promo_type: string;
+  condition: string;
+  card_name_snapshot: string | null;
+  quantity: number;
+  sell_price_snapshot: number | string;
+  buy_price_unit: number | string;
+  buy_price_total: number | string;
+  stock_on_hand_snapshot: number;
+  stock_reserved_snapshot: number;
+  payout_type: 'cash' | 'store_credit';
+  manual_review_required: boolean;
+  review_reason: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  card_title?: string | null;
+  card_subtitle?: string | null;
+};
+
+type BuylistOfferWithItems = BuylistOfferRow & {
+  items: BuylistOfferItemRow[];
+  totalItems: number;
+};
+
+type SwuCardUiRow = {
+  card_uid: string;
+  title: string | null;
+  subtitle: string | null;
 };
 
 const panelClass = 'rounded-2xl border border-white/10 bg-[#0B0C10]/70 backdrop-blur shadow-2xl';
@@ -76,6 +159,31 @@ function mapOrderStatusLabel(status: string | null | undefined) {
   return status ?? '—';
 }
 
+function mapSellOfferStatusLabel(status: string | null | undefined) {
+  const s = String(status ?? '').toLowerCase();
+
+  if (s === 'draft') return 'Rascunho';
+  if (s === 'submitted') return 'Enviado';
+  if (s === 'pending_review') return 'Em análise';
+  if (s === 'approved') return 'Aprovado';
+  if (s === 'rejected') return 'Rejeitado';
+  if (s === 'received') return 'Recebido';
+  if (s === 'paid') return 'Pago';
+  if (s === 'cancelled') return 'Cancelado';
+
+  return status ?? '—';
+}
+
+function mapHistoryStatusLabel(kind: HistoryEntry['kind'], status: string | null | undefined) {
+  return kind === 'sell_offer' ? mapSellOfferStatusLabel(status) : mapOrderStatusLabel(status);
+}
+
+function mapPayoutTypeLabel(payoutType: 'cash' | 'store_credit' | null | undefined) {
+  if (payoutType === 'cash') return 'Dinheiro';
+  if (payoutType === 'store_credit') return 'Crédito na loja';
+  return '—';
+}
+
 function statusBadgeClass(status: string | null | undefined) {
   const s = String(status ?? '').toLowerCase();
 
@@ -83,19 +191,27 @@ function statusBadgeClass(status: string | null | undefined) {
     return 'border-emerald-400/20 bg-emerald-500/15 text-emerald-200';
   }
 
-  if (s === 'awaiting_payment' || s === 'reserved') {
+  if (
+    s === 'awaiting_payment' ||
+    s === 'reserved' ||
+    s === 'submitted' ||
+    s === 'pending_review' ||
+    s === 'approved' ||
+    s === 'received'
+  ) {
     return 'border-amber-400/20 bg-amber-500/15 text-amber-200';
   }
 
-  if (s === 'cancelled') {
+  if (s === 'cancelled' || s === 'rejected') {
     return 'border-rose-400/20 bg-rose-500/15 text-rose-200';
   }
 
   return 'border-white/10 bg-white/5 text-white/70';
 }
 
-function mapFilterToStatuses(tipo: string | null): string[] | null {
+function mapPurchaseFilterToStatuses(tipo: string | null): string[] | null {
   if (!tipo) return null;
+
   const t = tipo.toLowerCase();
 
   if (t === 'compras') {
@@ -106,8 +222,44 @@ function mapFilterToStatuses(tipo: string | null): string[] | null {
     return ['awaiting_payment', 'reserved'];
   }
 
+  if (t === 'concluidos') {
+    return ['paid'];
+  }
+
   if (t === 'cancelados') {
     return ['cancelled'];
+  }
+
+  if (t === 'vendas') {
+    return [];
+  }
+
+  return null;
+}
+
+function mapSellFilterToStatuses(tipo: string | null): string[] | null {
+  if (!tipo) return null;
+
+  const t = tipo.toLowerCase();
+
+  if (t === 'compras') {
+    return [];
+  }
+
+  if (t === 'vendas') {
+    return ['submitted', 'pending_review', 'approved', 'received', 'paid'];
+  }
+
+  if (t === 'pendentes') {
+    return ['submitted', 'pending_review', 'approved', 'received'];
+  }
+
+  if (t === 'concluidos') {
+    return ['paid'];
+  }
+
+  if (t === 'cancelados') {
+    return ['cancelled', 'rejected'];
   }
 
   return null;
@@ -130,8 +282,10 @@ function MeusPedidosContent() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
+  const [sellOffers, setSellOffers] = useState<BuylistOfferWithItems[]>([]);
 
-  const statusFilter = useMemo(() => mapFilterToStatuses(tipo), [tipo]);
+  const purchaseStatusFilter = useMemo(() => mapPurchaseFilterToStatuses(tipo), [tipo]);
+  const sellStatusFilter = useMemo(() => mapSellFilterToStatuses(tipo), [tipo]);
 
   useEffect(() => {
     if (!isLoggedIn) router.replace('/entrar?next=/meus-pedidos');
@@ -142,6 +296,8 @@ function MeusPedidosContent() {
 
     async function load() {
       if (!user?.id) {
+        setOrders([]);
+        setSellOffers([]);
         setLoading(false);
         return;
       }
@@ -149,73 +305,235 @@ function MeusPedidosContent() {
       setLoading(true);
       setErrorMsg(null);
 
-      let query = supabase
-        .from('orders')
-        .select('id, user_id, status, subtotal_brl, shipping_brl, discount_brl, total_brl, currency, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (statusFilter?.length) {
-        query = query.in('status', statusFilter);
-      } else {
-        query = query.neq('status', 'draft');
+      if (purchaseStatusFilter && purchaseStatusFilter.length === 0) {
+        setOrders([]);
       }
 
-      const { data: orderRows, error: orderErr } = await query;
+      let safeOrders: OrderRow[] = [];
 
-      if (!mounted) return;
+      if (!purchaseStatusFilter || purchaseStatusFilter.length > 0) {
+        let query = supabase
+          .from('orders')
+          .select('id, user_id, status, subtotal_brl, shipping_brl, discount_brl, total_brl, currency, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      if (orderErr) {
-        setErrorMsg(`Erro ao carregar pedidos: ${orderErr.message}`);
-        setLoading(false);
-        return;
+        if (purchaseStatusFilter?.length) {
+          query = query.in('status', purchaseStatusFilter);
+        } else {
+          query = query.neq('status', 'draft');
+        }
+
+        const { data: orderRows, error: orderErr } = await query;
+
+        if (!mounted) return;
+
+        if (orderErr) {
+          setErrorMsg(`Erro ao carregar pedidos: ${orderErr.message}`);
+          setLoading(false);
+          return;
+        }
+
+        safeOrders = (orderRows ?? []) as OrderRow[];
       }
-
-      const safeOrders = (orderRows ?? []) as OrderRow[];
 
       if (safeOrders.length === 0) {
         setOrders([]);
-        setLoading(false);
-        return;
+      } else {
+        const orderIds = safeOrders.map((o) => o.id);
+
+        const { data: itemRows, error: itemErr } = await supabase
+          .from('order_items')
+          .select('id, order_id, sku_key, qty, unit_price_brl, line_total_brl, item_snapshot, created_at')
+          .in('order_id', orderIds)
+          .order('created_at', { ascending: true });
+
+        if (!mounted) return;
+
+        if (itemErr) {
+          setErrorMsg(`Erro ao carregar itens dos pedidos: ${itemErr.message}`);
+          setLoading(false);
+          return;
+        }
+
+        const safeItems = (itemRows ?? []) as OrderItemRow[];
+
+        const uniquePurchaseCardUids = Array.from(
+          new Set(
+            safeItems
+              .map((item) => item.item_snapshot?.card_uid)
+              .filter(Boolean)
+          )
+        ) as string[];
+
+        let purchaseCatalogByCardUid = new Map<string, SwuCardUiRow>();
+
+        if (uniquePurchaseCardUids.length > 0) {
+          const { data: purchaseCatalogRows, error: purchaseCatalogErr } = await supabase
+            .from('swu_cards_ui')
+            .select('card_uid, title, subtitle')
+            .in('card_uid', uniquePurchaseCardUids);
+
+          if (!mounted) return;
+
+          if (purchaseCatalogErr) {
+            setErrorMsg(`Erro ao carregar catálogo das compras: ${purchaseCatalogErr.message}`);
+            setLoading(false);
+            return;
+          }
+
+          purchaseCatalogByCardUid = new Map(
+            ((purchaseCatalogRows ?? []) as SwuCardUiRow[]).map((card) => [card.card_uid, card])
+          );
+        }
+
+        const enrichedPurchaseItems: EnrichedOrderItemRow[] = safeItems.map((item) => {
+          const cardUid = item.item_snapshot?.card_uid ?? null;
+          const card = cardUid ? purchaseCatalogByCardUid.get(cardUid) : undefined;
+
+          return {
+            ...item,
+            card_title: card?.title ?? item.item_snapshot?.title ?? null,
+            card_subtitle: card?.subtitle ?? null,
+          };
+        });
+
+        const itemsByOrder = new Map<string, EnrichedOrderItemRow[]>();
+
+        for (const item of enrichedPurchaseItems) {
+          const arr = itemsByOrder.get(item.order_id) ?? [];
+          arr.push(item);
+          itemsByOrder.set(item.order_id, arr);
+        }
+
+        const combined: OrderWithItems[] = safeOrders.map((order) => {
+          const items = itemsByOrder.get(order.id) ?? [];
+          const totalItems = items.reduce((acc, item) => acc + Number(item.qty ?? 0), 0);
+
+          return {
+            ...order,
+            items,
+            totalItems,
+          };
+        });
+
+        setOrders(combined);
       }
 
-      const orderIds = safeOrders.map((o) => o.id);
+      let safeSellOffers: BuylistOfferRow[] = [];
 
-      const { data: itemRows, error: itemErr } = await supabase
-        .from('order_items')
-        .select('id, order_id, sku_key, qty, unit_price_brl, line_total_brl, item_snapshot, created_at')
-        .in('order_id', orderIds)
-        .order('created_at', { ascending: true });
+      if (!sellStatusFilter || sellStatusFilter.length > 0) {
+        let sellQuery = supabase
+          .from('buylist_offers')
+          .select(
+            'id, user_id, status, payout_type, subtotal_amount, final_amount, cash_reserved_amount, manual_review_required, review_reason, notes, created_at, updated_at'
+          )
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      if (!mounted) return;
+        if (sellStatusFilter?.length) {
+          sellQuery = sellQuery.in('status', sellStatusFilter);
+        } else {
+          sellQuery = sellQuery.neq('status', 'draft');
+        }
 
-      if (itemErr) {
-        setErrorMsg(`Erro ao carregar itens dos pedidos: ${itemErr.message}`);
-        setLoading(false);
-        return;
+        const { data: sellRows, error: sellErr } = await sellQuery;
+
+        if (!mounted) return;
+
+        if (sellErr) {
+          setErrorMsg(`Erro ao carregar vendas para a loja: ${sellErr.message}`);
+          setLoading(false);
+          return;
+        }
+
+        safeSellOffers = (sellRows ?? []) as BuylistOfferRow[];
       }
 
-      const safeItems = (itemRows ?? []) as OrderItemRow[];
-      const itemsByOrder = new Map<string, OrderItemRow[]>();
+      if (safeSellOffers.length === 0) {
+        setSellOffers([]);
+      } else {
+        const offerIds = safeSellOffers.map((offer) => offer.id);
 
-      for (const item of safeItems) {
-        const arr = itemsByOrder.get(item.order_id) ?? [];
-        arr.push(item);
-        itemsByOrder.set(item.order_id, arr);
+        const { data: sellItemRows, error: sellItemErr } = await supabase
+          .from('buylist_offer_items')
+          .select(
+            'id, offer_id, sku_key, pricing_rule_id, card_uid, finish, promo_type, condition, card_name_snapshot, quantity, sell_price_snapshot, buy_price_unit, buy_price_total, stock_on_hand_snapshot, stock_reserved_snapshot, payout_type, manual_review_required, review_reason, status, created_at, updated_at'
+          )
+          .in('offer_id', offerIds)
+          .order('created_at', { ascending: true });
+
+        if (!mounted) return;
+
+        if (sellItemErr) {
+          setErrorMsg(`Erro ao carregar itens das vendas para a loja: ${sellItemErr.message}`);
+          setLoading(false);
+          return;
+        }
+
+        const safeSellItems = (sellItemRows ?? []) as BuylistOfferItemRow[];
+
+        const uniqueCardUids = Array.from(
+          new Set(
+            safeSellItems
+              .map((item) => item.card_uid)
+              .filter(Boolean)
+          )
+        );
+
+        let catalogByCardUid = new Map<string, SwuCardUiRow>();
+
+        if (uniqueCardUids.length > 0) {
+          const { data: catalogRows, error: catalogErr } = await supabase
+            .from('swu_cards_ui')
+            .select('card_uid, title, subtitle')
+            .in('card_uid', uniqueCardUids);
+
+          if (!mounted) return;
+
+          if (catalogErr) {
+            setErrorMsg(`Erro ao carregar catálogo das cartas: ${catalogErr.message}`);
+            setLoading(false);
+            return;
+          }
+
+          catalogByCardUid = new Map(
+            ((catalogRows ?? []) as SwuCardUiRow[]).map((card) => [card.card_uid, card])
+          );
+        }
+
+        const enrichedSellItems: BuylistOfferItemRow[] = safeSellItems.map((item) => {
+          const card = catalogByCardUid.get(item.card_uid);
+
+          return {
+            ...item,
+            card_title: card?.title ?? null,
+            card_subtitle: card?.subtitle ?? null,
+          };
+        });
+
+        const itemsByOffer = new Map<string, BuylistOfferItemRow[]>();
+
+        for (const item of enrichedSellItems) {
+          const arr = itemsByOffer.get(item.offer_id) ?? [];
+          arr.push(item);
+          itemsByOffer.set(item.offer_id, arr);
+        }
+
+        const combinedSellOffers: BuylistOfferWithItems[] = safeSellOffers.map((offer) => {
+          const items = itemsByOffer.get(offer.id) ?? [];
+          const totalItems = items.reduce((acc, item) => acc + Number(item.quantity ?? 0), 0);
+
+          return {
+            ...offer,
+            items,
+            totalItems,
+          };
+        });
+
+        setSellOffers(combinedSellOffers);
       }
 
-      const combined: OrderWithItems[] = safeOrders.map((order) => {
-        const items = itemsByOrder.get(order.id) ?? [];
-        const totalItems = items.reduce((acc, item) => acc + Number(item.qty ?? 0), 0);
-
-        return {
-          ...order,
-          items,
-          totalItems,
-        };
-      });
-
-      setOrders(combined);
       setLoading(false);
     }
 
@@ -224,25 +542,82 @@ function MeusPedidosContent() {
     return () => {
       mounted = false;
     };
-  }, [user?.id, statusFilter]);
+  }, [user?.id, purchaseStatusFilter, sellStatusFilter]);
 
   const pageTitle = useMemo(() => {
-    if (tipo === 'compras') return 'Meus Pedidos de Compra';
-    if (tipo === 'pendentes') return 'Pedidos Pendentes';
-    if (tipo === 'cancelados') return 'Pedidos Cancelados';
-    return 'Meus Pedidos';
+    if (tipo === 'compras') return 'Minhas Compras';
+    if (tipo === 'vendas') return 'Minhas Vendas para a Loja';
+    if (tipo === 'pendentes') return 'Operações Pendentes';
+    if (tipo === 'concluidos') return 'Operações Concluídas';
+    if (tipo === 'cancelados') return 'Operações Canceladas';
+    return 'Meus Pedidos e Vendas';
   }, [tipo]);
 
+  const historyEntries = useMemo<HistoryEntry[]>(() => {
+    const purchaseEntries: HistoryEntry[] = orders.map((order) => ({
+      id: order.id,
+      kind: 'purchase',
+      status: order.status,
+      created_at: order.created_at,
+      total_amount: order.total_brl,
+      currency: order.currency,
+      item_count: order.totalItems,
+      items: order.items.map((item) => ({
+        id: item.id,
+        title: item.card_title || item.item_snapshot?.title || item.sku_key,
+        subtitle: item.card_subtitle ?? null,
+        qty: Number(item.qty ?? 0),
+        unit_amount: item.unit_price_brl,
+        total_amount: item.line_total_brl,
+        finish: item.item_snapshot?.finish ?? null,
+        condition: item.item_snapshot?.condition ?? null,
+        promo_type: item.item_snapshot?.promo_type ?? null,
+      })),
+    }));
+
+    const sellEntries: HistoryEntry[] = sellOffers.map((offer) => ({
+      id: offer.id,
+      kind: 'sell_offer',
+      status: offer.status,
+      created_at: offer.created_at,
+      total_amount: offer.final_amount,
+      payout_type: offer.payout_type,
+      manual_review_required: offer.manual_review_required,
+      review_reason: offer.review_reason,
+      item_count: offer.totalItems,
+      items: offer.items.map((item) => ({
+        id: item.id,
+        title:
+          item.card_title ||
+          item.card_name_snapshot ||
+          item.sku_key,
+        subtitle: item.card_subtitle ?? null,
+        qty: Number(item.quantity ?? 0),
+        unit_amount: item.buy_price_unit,
+        total_amount: item.buy_price_total,
+        finish: item.finish ?? null,
+        condition: item.condition ?? null,
+        promo_type: item.promo_type ?? null,
+      })),
+    }));
+
+    return [...purchaseEntries, ...sellEntries].sort((a, b) => {
+      const aTime = new Date(a.created_at).getTime();
+      const bTime = new Date(b.created_at).getTime();
+      return bTime - aTime;
+    });
+  }, [orders, sellOffers]);
+
   const summary = useMemo(() => {
-    const totalOrders = orders.length;
-    const totalItems = orders.reduce((acc, order) => acc + order.totalItems, 0);
-    const totalValue = orders.reduce((acc, order) => {
-      const n = typeof order.total_brl === 'string' ? Number(order.total_brl) : Number(order.total_brl ?? 0);
+    const totalOperations = historyEntries.length;
+    const totalItems = historyEntries.reduce((acc, entry) => acc + entry.item_count, 0);
+    const totalValue = historyEntries.reduce((acc, entry) => {
+      const n = typeof entry.total_amount === 'string' ? Number(entry.total_amount) : Number(entry.total_amount ?? 0);
       return acc + (Number.isFinite(n) ? n : 0);
     }, 0);
 
-    return { totalOrders, totalItems, totalValue };
-  }, [orders]);
+    return { totalOperations, totalItems, totalValue };
+  }, [historyEntries]);
 
   return (
     <main className="relative min-h-screen bg-[#F6F0E6]">
@@ -257,7 +632,7 @@ function MeusPedidosContent() {
 
             <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <p className="text-lg text-black/65">
-                Acompanhe seus pedidos, status e itens comprados.
+                Acompanhe suas compras, vendas para a loja e o status de cada operação.
               </p>
 
               <div className="flex flex-wrap gap-2">
@@ -268,10 +643,16 @@ function MeusPedidosContent() {
                   Todos
                 </Link>
                 <Link href="/meus-pedidos?tipo=compras" className={filterChipClass(tipo === 'compras')}>
-                  Pagos
+                  Compras
+                </Link>
+                <Link href="/meus-pedidos?tipo=vendas" className={filterChipClass(tipo === 'vendas')}>
+                  Vendas
                 </Link>
                 <Link href="/meus-pedidos?tipo=pendentes" className={filterChipClass(tipo === 'pendentes')}>
                   Pendentes
+                </Link>
+                <Link href="/meus-pedidos?tipo=concluidos" className={filterChipClass(tipo === 'concluidos')}>
+                  Concluídos
                 </Link>
                 <Link href="/meus-pedidos?tipo=cancelados" className={filterChipClass(tipo === 'cancelados')}>
                   Cancelados
@@ -282,9 +663,9 @@ function MeusPedidosContent() {
 
           <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-white/10 bg-[#0B0C10]/70 backdrop-blur shadow-2xl px-5 py-4 min-h-[96px] flex flex-col justify-center">
-              <div className="text-xs uppercase tracking-wide text-white/50">Pedidos</div>
+              <div className="text-xs uppercase tracking-wide text-white/50">Operações</div>
               <div className="mt-2 text-3xl font-semibold leading-none text-white">
-                {summary.totalOrders}
+                {summary.totalOperations}
               </div>
             </div>
 
@@ -303,6 +684,13 @@ function MeusPedidosContent() {
             </div>
           </div>
 
+          <div className="mb-6 rounded-2xl border border-dashed border-black/15 bg-white/40 px-5 py-4 text-sm text-black/70">
+            <div className="font-semibold text-black">Debug temporário da integração</div>
+            <div className="mt-2">Compras carregadas: {orders.length}</div>
+            <div>Vendas para a loja carregadas: {sellOffers.length}</div>
+            <div>Total renderizado na lista: {historyEntries.length}</div>
+          </div>
+
           <div className={panelClass}>
             <div className="p-6">
               {errorMsg ? (
@@ -312,24 +700,26 @@ function MeusPedidosContent() {
               ) : null}
 
               {loading ? (
-                <div className="text-sm text-white/60">Carregando pedidos…</div>
-              ) : orders.length === 0 ? (
+                <div className="text-sm text-white/60">Carregando operações…</div>
+              ) : historyEntries.length === 0 ? (
                 <div className="rounded-xl border border-white/10 bg-black/60 px-4 py-4 text-sm text-white/60">
-                  Nenhum pedido encontrado para este filtro.
+                  Nenhuma operação encontrada para este filtro.
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {orders.map((order) => (
+                  {historyEntries.map((entry) => (
                     <div
-                      key={order.id}
+                      key={`${entry.kind}-${entry.id}`}
                       className="rounded-2xl border border-white/10 bg-black/50 p-5"
                     >
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-3">
                           <div>
-                            <div className="text-xs text-white/45">Pedido</div>
+                            <div className="text-xs text-white/45">
+                              {entry.kind === 'sell_offer' ? 'Oferta de venda' : 'Pedido'}
+                            </div>
                             <div className="mt-1 font-mono text-sm text-white/85 break-all">
-                              {order.id}
+                              {entry.id}
                             </div>
                           </div>
 
@@ -337,28 +727,42 @@ function MeusPedidosContent() {
                             <span
                               className={[
                                 'inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold',
-                                statusBadgeClass(order.status),
+                                statusBadgeClass(entry.status),
                               ].join(' ')}
                             >
-                              {mapOrderStatusLabel(order.status)}
+                              {mapHistoryStatusLabel(entry.kind, entry.status)}
                             </span>
 
+                            {entry.kind === 'sell_offer' ? (
+                              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/80">
+                                {mapPayoutTypeLabel(entry.payout_type)}
+                              </span>
+                            ) : null}
+
                             <span className="text-xs text-white/50">
-                              {formatDateBR(order.created_at)}
+                              {formatDateBR(entry.created_at)}
                             </span>
                           </div>
+
+                          {entry.kind === 'sell_offer' && entry.manual_review_required ? (
+                            <div className="text-xs text-amber-200">
+                              Revisão manual necessária
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 text-sm lg:min-w-[320px]">
                           <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3">
                             <div className="text-xs text-white/45">Itens</div>
-                            <div className="mt-1 font-semibold text-white/90">{order.totalItems}</div>
+                            <div className="mt-1 font-semibold text-white/90">{entry.item_count}</div>
                           </div>
 
                           <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3">
-                            <div className="text-xs text-white/45">Total</div>
+                            <div className="text-xs text-white/45">
+                              {entry.kind === 'sell_offer' ? 'Valor da oferta' : 'Total'}
+                            </div>
                             <div className="mt-1 font-semibold text-orange-300">
-                              {formatMoneyBRL(order.total_brl)}
+                              {formatMoneyBRL(entry.total_amount)}
                             </div>
                           </div>
                         </div>
@@ -366,16 +770,18 @@ function MeusPedidosContent() {
 
                       <div className="mt-5 border-t border-white/10 pt-4">
                         <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/55">
-                          Itens do pedido
+                          {entry.kind === 'sell_offer' ? 'Cartas da oferta' : 'Itens do pedido'}
                         </div>
 
-                        {order.items.length === 0 ? (
+                        {entry.items.length === 0 ? (
                           <div className="text-xs text-white/50">
-                            Nenhum item encontrado para este pedido.
+                            {entry.kind === 'sell_offer'
+                              ? 'Nenhum item encontrado para esta oferta.'
+                              : 'Nenhum item encontrado para este pedido.'}
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            {order.items.map((item) => (
+                            {entry.items.map((item) => (
                               <div
                                 key={item.id}
                                 className="rounded-xl border border-white/10 bg-black/40 px-4 py-3"
@@ -383,11 +789,12 @@ function MeusPedidosContent() {
                                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                   <div className="min-w-0">
                                     <div className="text-sm font-semibold text-white/90">
-                                      {item.item_snapshot?.title ?? item.sku_key}
+                                      {item.title}
+                                      {item.subtitle ? ` — ${item.subtitle}` : ''}
                                     </div>
 
                                     <div className="mt-1 text-xs text-white/55">
-                                      {[item.item_snapshot?.finish, item.item_snapshot?.condition]
+                                      {[item.promo_type, item.finish, item.condition]
                                         .filter(Boolean)
                                         .join(' • ') || '—'}
                                     </div>
@@ -402,14 +809,14 @@ function MeusPedidosContent() {
                                     <div>
                                       <div className="text-white/45">Unitário</div>
                                       <div className="mt-1 text-white/85">
-                                        {formatMoneyBRL(item.unit_price_brl)}
+                                        {formatMoneyBRL(item.unit_amount)}
                                       </div>
                                     </div>
 
                                     <div>
                                       <div className="text-white/45">Subtotal</div>
                                       <div className="mt-1 font-semibold text-orange-300">
-                                        {formatMoneyBRL(item.line_total_brl)}
+                                        {formatMoneyBRL(item.total_amount)}
                                       </div>
                                     </div>
                                   </div>
@@ -420,11 +827,13 @@ function MeusPedidosContent() {
                         )}
                       </div>
 
-                      <div className="mt-4 flex justify-end">
-                        <Link href="/cartas" className={secondaryBtn}>
-                          Comprar mais
-                        </Link>
-                      </div>
+                      {entry.kind === 'purchase' ? (
+                        <div className="mt-4 flex justify-end">
+                          <Link href="/cartas" className={secondaryBtn}>
+                            Comprar mais
+                          </Link>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
