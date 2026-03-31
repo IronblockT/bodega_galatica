@@ -32,14 +32,21 @@ export function Bounties() {
         const res = await fetch("/api/cards/trending", { cache: "no-store" });
         const json = await res.json();
 
+        console.log("[Bounties] /api/cards/trending", {
+          status: res.status,
+          ok: res.ok,
+          body: json,
+        });
+
         if (!active) return;
 
-        if (json?.ok && Array.isArray(json.items)) {
+        if (res.ok && json?.ok && Array.isArray(json.items)) {
           setItems(json.items);
         } else {
           setItems([]);
         }
-      } catch {
+      } catch (error) {
+        console.error("[Bounties] loadTrending failed", error);
         if (!active) return;
         setItems([]);
       } finally {
@@ -82,76 +89,76 @@ export function Bounties() {
         <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
           {loading
             ? Array.from({ length: 10 }).map((_, i) => (
-                <div
-                  key={`loading-${i}`}
-                  className="rounded-2xl bg-white/70 ring-1 ring-black/5 shadow-premium overflow-hidden animate-pulse"
-                >
-                  <div className="aspect-[3/4] w-full bg-black/5" />
-                  <div className="p-3">
-                    <div className="h-4 rounded bg-black/10" />
-                    <div className="mt-2 h-4 w-24 rounded bg-black/10" />
-                  </div>
+              <div
+                key={`loading-${i}`}
+                className="rounded-2xl bg-white/70 ring-1 ring-black/5 shadow-premium overflow-hidden animate-pulse"
+              >
+                <div className="aspect-[3/4] w-full bg-black/5" />
+                <div className="p-3">
+                  <div className="h-4 rounded bg-black/10" />
+                  <div className="mt-2 h-4 w-24 rounded bg-black/10" />
                 </div>
-              ))
+              </div>
+            ))
             : items.map((c) => {
-                const name = c.subtitle
-                  ? `${c.title} — ${c.subtitle}`
-                  : c.title;
+              const name = c.subtitle
+                ? `${c.title} — ${c.subtitle}`
+                : c.title;
 
-                return (
-                  <Link
-                    key={c.id}
-                    href={c.href}
-                    className="
+              return (
+                <Link
+                  key={c.id}
+                  href={c.href}
+                  className="
                       group rounded-2xl bg-white/80 backdrop-blur
                       ring-1 ring-black/5 shadow-premium
                       hover:shadow-[0_18px_50px_rgba(0,0,0,.14)]
                       transition
                     "
-                  >
-                    {/* IMAGE */}
-                    <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0B0C10] flex items-center justify-center">
-                      <img
-                        src={c.image_front_url}
-                        alt={name}
-                        loading="lazy"
-                        className="max-h-full max-w-full object-contain p-2 transition-transform group-hover:scale-[1.02]"
-                      />
+                >
+                  {/* IMAGE */}
+                  <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0B0C10] flex items-center justify-center">
+                    <img
+                      src={c.image_front_url}
+                      alt={name}
+                      loading="lazy"
+                      className="max-h-full max-w-full object-contain p-2 transition-transform group-hover:scale-[1.02]"
+                    />
 
-                      {/* BADGES */}
-                      <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
-                        <span className="rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white">
-                          {c.expansion_code}
-                        </span>
-                        <span className="rounded-full bg-white/85 px-2 py-1 text-[10px] font-semibold text-black">
-                          {c.rarity_label}
-                        </span>
-                      </div>
-
-                      {/* SPIKE */}
-                      <div className="absolute right-3 bottom-3 z-10 rounded-full bg-orange-500/90 px-2 py-1 text-[10px] font-semibold text-white shadow">
-                        +{Number(c.spikePct || 0).toFixed(0)}%
-                      </div>
+                    {/* BADGES */}
+                    <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
+                      <span className="rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white">
+                        {c.expansion_code}
+                      </span>
+                      <span className="rounded-full bg-white/85 px-2 py-1 text-[10px] font-semibold text-black">
+                        {c.rarity_label}
+                      </span>
                     </div>
 
-                    {/* INFO */}
-                    <div className="flex min-h-[92px] flex-col p-3">
-                      <div className="line-clamp-2 text-sm font-semibold text-black">
-                        {name}
-                      </div>
-
-                      <div className="mt-auto pt-3 flex items-center justify-between">
-                        <div className="text-sm font-semibold text-orange-600">
-                          {formatBRL(c.price)}
-                        </div>
-                        <span className="text-xs text-black/50 group-hover:text-black/70 transition">
-                          Ver →
-                        </span>
-                      </div>
+                    {/* SPIKE */}
+                    <div className="absolute right-3 bottom-3 z-10 rounded-full bg-orange-500/90 px-2 py-1 text-[10px] font-semibold text-white shadow">
+                      +{Number(c.spikePct || 0).toFixed(0)}%
                     </div>
-                  </Link>
-                );
-              })}
+                  </div>
+
+                  {/* INFO */}
+                  <div className="flex min-h-[92px] flex-col p-3">
+                    <div className="line-clamp-2 text-sm font-semibold text-black">
+                      {name}
+                    </div>
+
+                    <div className="mt-auto pt-3 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-orange-600">
+                        {formatBRL(c.price)}
+                      </div>
+                      <span className="text-xs text-black/50 group-hover:text-black/70 transition">
+                        Ver →
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
         </div>
 
         {/* EMPTY */}

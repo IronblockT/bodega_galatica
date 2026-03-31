@@ -25,7 +25,6 @@ type CardUiRow = {
 
 export async function GET() {
   try {
-    // 1️⃣ Trending base
     const { data: trendingData, error: trendingError } = await supabase
       .from("swu_trending_cards")
       .select(
@@ -36,19 +35,30 @@ export async function GET() {
       .limit(10);
 
     if (trendingError) {
+      console.error("[trending API] swu_trending_cards error:", trendingError);
       return NextResponse.json(
-        { ok: false, error: trendingError.message },
+        {
+          ok: false,
+          stage: "swu_trending_cards",
+          error: trendingError.message,
+          details: trendingError,
+        },
         { status: 500 }
       );
     }
 
     const trending = (trendingData ?? []) as TrendingRow[];
 
+    console.log("[trending API] trending rows:", trending.length, trending);
+
     if (trending.length === 0) {
-      return NextResponse.json({ ok: true, items: [] });
+      return NextResponse.json({
+        ok: true,
+        stage: "empty_trending",
+        items: [],
+      });
     }
 
-    // 2️⃣ Buscar dados das cartas
     const cardUids = Array.from(new Set(trending.map((r) => r.card_uid)));
 
     const { data: cardsData, error: cardsError } = await supabase
@@ -59,71 +69,66 @@ export async function GET() {
       .in("card_uid", cardUids);
 
     if (cardsError) {
+      console.error("[trending API] swu_cards_ui error:", cardsError);
       return NextResponse.json(
-        { ok: false, error: cardsError.message },
+        {
+          ok: false,
+          stage: "swu_cards_ui",
+          error: cardsError.message,
+          details: cardsError,
+          cardUids,
+        },
         { status: 500 }
       );
     }
 
     const cards = (cardsData ?? []) as CardUiRow[];
 
+    console.log("[trending API] cards rows:", cards.length, cards);
+
     const cardByUid = new Map<string, CardUiRow>(
       cards.map((c) => [c.card_uid, c])
     );
 
-    // 3️⃣ Montar resposta FINAL (ALINHADA COM /api/cards)
     const items = trending.map((row) => {
       const card = cardByUid.get(row.card_uid);
-
-      const title = card?.title ?? "Carta sem nome";
-      const subtitle = card?.subtitle?.trim() || "";
-      const fullName = subtitle ? `${title} — ${subtitle}` : title;
-
-      const finish = String(row.finish ?? "standard");
-      const condition = String(row.condition ?? "NM");
 
       return {
         id: row.card_uid,
         card_uid: row.card_uid,
         sku_key: row.sku_key,
-
-        // 🔥 mesmos nomes do sistema
-        title,
-        subtitle,
+        title: card?.title ?? "Carta sem nome",
+        subtitle: card?.subtitle ?? "",
         expansion_code: card?.expansion_code ?? "SWU",
         rarity_label: card?.rarity_label ?? "—",
-
-        // 🔥 CRÍTICO — NÃO MEXER
-        image_front_url:
-          card?.image_front_url ?? "/swu/cards/placeholder.png",
-
-        // dados de mercado
+        image_front_url: card?.image_front_url ?? "/swu/cards/placeholder.png",
         price: Number(row.preco_atual ?? 0),
         previousPrice: Number(row.preco_anterior ?? 0),
         spikeBrl: Number(row.aumento_brl ?? 0),
         spikePct: Number(row.aumento_pct ?? 0),
-
-        finish,
+        finish: String(row.finish ?? "standard"),
         promo_type: row.promo_type,
-        condition,
-
-        href: `/cartas/${encodeURIComponent(
-          row.card_uid
-        )}?finish=${encodeURIComponent(finish)}&cond=${encodeURIComponent(
-          condition
-        )}`,
+        condition: String(row.condition ?? "NM"),
+        href: `/cartas/${encodeURIComponent(row.card_uid)}?finish=${encodeURIComponent(
+          String(row.finish ?? "standard")
+        )}&cond=${encodeURIComponent(String(row.condition ?? "NM"))}`,
       };
     });
 
-    return NextResponse.json({ ok: true, items });
+    return NextResponse.json({
+      ok: true,
+      stage: "done",
+      items,
+    });
   } catch (error: unknown) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Erro interno ao buscar trending cards.";
+    console.error("[trending API] unexpected error:", error);
 
     return NextResponse.json(
-      { ok: false, error: message },
+      {
+        ok: false,
+        stage: "catch",
+        error: error instanceof Error ? error.message : "unknown error",
+      },
       { status: 500 }
     );
   }
