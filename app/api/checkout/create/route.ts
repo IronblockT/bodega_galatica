@@ -6,6 +6,12 @@ type CreateCheckoutBody = {
   items?: Array<{ sku_key: string; qty: number }>;
   payer?: { email?: string; name?: string };
   idempotency_key?: string;
+
+  shipping_brl?: number | string | null;
+  coupon_code?: string | null;
+  coupon_discount_brl?: number | string | null;
+  store_credit_applied_brl?: number | string | null;
+  final_total_brl?: number | string | null;
 };
 
 type InvRow = {
@@ -185,6 +191,29 @@ export async function POST(req: Request) {
     let total = 0;
     let reservePayload: unknown = null;
 
+    const requestedShipping = asNumber(body.shipping_brl ?? 0);
+    const requestedCouponDiscount = asNumber(body.coupon_discount_brl ?? 0);
+    const requestedStoreCredit = asNumber(body.store_credit_applied_brl ?? 0);
+    const requestedFinalTotal = asNumber(body.final_total_brl ?? 0);
+    const requestedCouponCode = String(body.coupon_code ?? "").trim().toUpperCase() || null;
+    const storeCreditApplied = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
+
+    if (Number.isFinite(requestedShipping) && requestedShipping < 0) {
+      return NextResponse.json({ error: "shipping_brl inválido" }, { status: 400 });
+    }
+
+    if (Number.isFinite(requestedCouponDiscount) && requestedCouponDiscount < 0) {
+      return NextResponse.json({ error: "coupon_discount_brl inválido" }, { status: 400 });
+    }
+
+    if (Number.isFinite(requestedStoreCredit) && requestedStoreCredit < 0) {
+      return NextResponse.json({ error: "store_credit_applied_brl inválido" }, { status: 400 });
+    }
+
+    if (Number.isFinite(requestedFinalTotal) && requestedFinalTotal < 0) {
+      return NextResponse.json({ error: "final_total_brl inválido" }, { status: 400 });
+    }
+
     if (orderId) {
       const orderRes = await sb(
         `orders?select=id,status,subtotal_brl,shipping_brl,discount_brl,total_brl&user_id=eq.${encodeURIComponent(
@@ -296,19 +325,38 @@ export async function POST(req: Request) {
         };
       });
 
-      subtotal = asNumber(existingOrder.subtotal_brl ?? 0);
-      shipping = asNumber(existingOrder.shipping_brl ?? 0);
-      discount = asNumber(existingOrder.discount_brl ?? 0);
-      total = asNumber(existingOrder.total_brl ?? 0);
+      subtotal = enriched.reduce((acc, x) => acc + x.line_total_brl, 0);
 
-      if (!Number.isFinite(subtotal)) {
-        subtotal = enriched.reduce((acc, x) => acc + x.line_total_brl, 0);
-      }
+      shipping = Number.isFinite(requestedShipping) ? requestedShipping : asNumber(existingOrder.shipping_brl ?? 0);
       if (!Number.isFinite(shipping)) shipping = 0;
-      if (!Number.isFinite(discount)) discount = 0;
-      if (!Number.isFinite(total) || total <= 0) {
-        total = subtotal + shipping - discount;
+
+      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount) ? requestedCouponDiscount : 0;
+      const storeCreditSafe = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
+
+      discount = couponDiscountSafe + storeCreditSafe;
+
+      const computedTotal = Math.max(subtotal + shipping - discount, 0);
+
+      total =
+        Number.isFinite(requestedFinalTotal) && requestedFinalTotal >= 0
+          ? requestedFinalTotal
+          : computedTotal;
+
+      if (!Number.isFinite(total) || total < 0) {
+        total = computedTotal;
       }
+
+      await sb(`orders?id=eq.${orderId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          subtotal_brl: subtotal,
+          shipping_brl: shipping,
+          discount_brl: discount,
+          total_brl: total,
+          notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
+        }),
+      });
+
     } else {
       const inputItems = body.items ?? [];
       const skus = inputItems.map((i) => i.sku_key);
@@ -415,9 +463,24 @@ export async function POST(req: Request) {
       });
 
       subtotal = enriched.reduce((acc, x) => acc + x.line_total_brl, 0);
-      shipping = 0;
-      discount = 0;
-      total = subtotal + shipping - discount;
+
+      shipping = Number.isFinite(requestedShipping) ? requestedShipping : 0;
+
+      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount) ? requestedCouponDiscount : 0;
+      const storeCreditSafe = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
+
+      discount = couponDiscountSafe + storeCreditSafe;
+
+      const computedTotal = Math.max(subtotal + shipping - discount, 0);
+
+      total =
+        Number.isFinite(requestedFinalTotal) && requestedFinalTotal >= 0
+          ? requestedFinalTotal
+          : computedTotal;
+
+      if (!Number.isFinite(total) || total < 0) {
+        total = computedTotal;
+      }
 
       const orderRes = await sb("orders?select=id", {
         method: "POST",
@@ -430,6 +493,7 @@ export async function POST(req: Request) {
           discount_brl: discount,
           total_brl: total,
           currency: "BRL",
+          notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
         }),
       });
 
@@ -503,8 +567,100 @@ export async function POST(req: Request) {
       throw new Error("Não foi possível determinar o order_id");
     }
 
+    if (total <= 0) {
+      if (storeCreditApplied > 0) {
+        const creditRes = await sb(
+          `user_store_credit?select=user_id,balance_brl&user_id=eq.${encodeURIComponent(body.user_id)}&limit=1`,
+          { method: "GET" }
+        );
+
+        const creditRows = (await creditRes.json()) as Array<{
+          user_id?: string;
+          balance_brl?: number | string | null;
+        }>;
+        const creditRow = creditRows?.[0];
+
+        if (!creditRow?.user_id) {
+          return NextResponse.json(
+            { error: "Saldo de crédito não encontrado para o usuário." },
+            { status: 409 }
+          );
+        }
+
+        const currentBalance = asNumber(creditRow.balance_brl ?? 0);
+        if (!Number.isFinite(currentBalance) || currentBalance < storeCreditApplied) {
+          return NextResponse.json(
+            { error: "Saldo de crédito insuficiente para concluir o pedido." },
+            { status: 409 }
+          );
+        }
+
+        const newBalance = Math.max(currentBalance - storeCreditApplied, 0);
+
+        await sb(`user_store_credit?user_id=eq.${encodeURIComponent(body.user_id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            balance_brl: Number(newBalance.toFixed(2)),
+          }),
+        });
+      }
+
+      await sb(`orders?id=eq.${orderId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "paid",
+          total_brl: 0,
+          discount_brl: discount,
+          shipping_brl: shipping,
+          subtotal_brl: subtotal,
+        }),
+      });
+
+      try {
+        await sb("payments", {
+          method: "POST",
+          body: JSON.stringify({
+            order_id: orderId,
+            provider: "store_credit",
+            status: "approved",
+            amount_brl: 0,
+            currency: "BRL",
+            provider_payload: {
+              method: "store_credit",
+              coupon_code: requestedCouponCode,
+              coupon_discount_brl: Number.isFinite(requestedCouponDiscount) ? requestedCouponDiscount : 0,
+              store_credit_applied_brl: storeCreditApplied,
+              subtotal_brl: subtotal,
+              shipping_brl: shipping,
+              total_brl: 0,
+            },
+          }),
+        });
+      } catch (err: unknown) {
+        console.log("[checkout/create] store_credit payment insert failed", {
+          orderId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      return NextResponse.json({
+        order_id: orderId,
+        paid_with_store_credit: true,
+        init_point: null,
+        preference_id: null,
+        total_brl: 0,
+      });
+    }
+
     const prefBody = {
-      items: enriched.map((x) => x.mp_item),
+      items: [
+        {
+          title: `Pedido Bodega Galática #${orderId.slice(0, 8)}`,
+          quantity: 1,
+          unit_price: Number(total.toFixed(2)),
+          currency_id: "BRL" as const,
+        },
+      ],
       external_reference: orderId,
       notification_url: `${appUrl}/api/mercadopago/webhook`,
       back_urls: {

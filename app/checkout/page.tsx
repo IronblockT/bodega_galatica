@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/components/cart/CartProvider";
 import { useAuth } from "@/components/hooks/useAuth";
+import { supabase } from "@/lib/supabaseClient";
 
 
 type CartItemDetail = {
@@ -17,6 +18,24 @@ type CartItemDetail = {
   condition: string | null;
   promo_type: string | null;
   price_brl: number | string | null;
+};
+
+type CheckoutSettingsRow = {
+  id: string;
+  shipping_flat_brl: number | string;
+  coupon_discount_percent: number | string;
+  free_shipping_min_brl: number | string;
+};
+
+type StoreCreditRow = {
+  user_id: string;
+  balance_brl: number | string;
+};
+
+type CouponValidation = {
+  applied: boolean;
+  code: string;
+  active: boolean;
 };
 
 const panelClass =
@@ -42,6 +61,65 @@ export default function CheckoutPage() {
 
   const [creatingPayment, setCreatingPayment] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  const [settings, setSettings] = useState<CheckoutSettingsRow | null>(null);
+  const [storeCredit, setStoreCredit] = useState<StoreCreditRow | null>(null);
+
+  const [couponCode, setCouponCode] = useState("");
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponInfo, setCouponInfo] = useState<CouponValidation | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCheckoutMeta() {
+      try {
+        const { data: settingsRows, error: settingsErr } = await supabase
+          .from("checkout_settings")
+          .select("id, shipping_flat_brl, coupon_discount_percent, free_shipping_min_brl")
+          .limit(1);
+
+        if (settingsErr) {
+          throw settingsErr;
+        }
+
+        if (!cancelled) {
+          setSettings((settingsRows?.[0] as CheckoutSettingsRow) ?? null);
+        }
+
+        if (user?.id) {
+          const { data: creditRow, error: creditErr } = await supabase
+            .from("user_store_credit")
+            .select("user_id, balance_brl")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (creditErr) {
+            throw creditErr;
+          }
+
+          if (!cancelled) {
+            setStoreCredit((creditRow as StoreCreditRow) ?? null);
+          }
+        } else if (!cancelled) {
+          setStoreCredit(null);
+        }
+      } catch (err) {
+        console.error("[checkout-meta]", err);
+        if (!cancelled) {
+          setSettings(null);
+          setStoreCredit(null);
+        }
+      }
+    }
+
+    loadCheckoutMeta();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +200,45 @@ export default function CheckoutPage() {
     return checkoutRows.reduce((sum, row) => sum + row.subtotal, 0);
   }, [checkoutRows]);
 
+  const subtotal = total;
+
+  const shipping = useMemo(() => {
+    const flat = Number(settings?.shipping_flat_brl ?? 0);
+    const freeMin = Number(settings?.free_shipping_min_brl ?? 0);
+
+    if (Number.isFinite(freeMin) && freeMin > 0 && subtotal >= freeMin) {
+      return 0;
+    }
+
+    return Number.isFinite(flat) ? flat : 0;
+  }, [settings, subtotal]);
+
+  const couponDiscount = useMemo(() => {
+    if (!couponInfo?.applied) return 0;
+
+    const percent = Number(settings?.coupon_discount_percent ?? 0);
+    if (!Number.isFinite(percent) || percent <= 0) return 0;
+
+    return subtotal * (percent / 100);
+  }, [couponInfo, settings, subtotal]);
+
+  const availableCredit = useMemo(() => {
+    const n = Number(storeCredit?.balance_brl ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  }, [storeCredit]);
+
+  const creditBase = useMemo(() => {
+    return Math.max(subtotal + shipping - couponDiscount, 0);
+  }, [subtotal, shipping, couponDiscount]);
+
+  const appliedCredit = useMemo(() => {
+    return Math.min(availableCredit, creditBase);
+  }, [availableCredit, creditBase]);
+
+  const finalTotal = useMemo(() => {
+    return Math.max(subtotal + shipping - couponDiscount - appliedCredit, 0);
+  }, [subtotal, shipping, couponDiscount, appliedCredit]);
+
   if (!items.length) {
     return (
       <main className="relative min-h-screen bg-[#F6F0E6]">
@@ -181,6 +298,11 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           user_id: user.id,
           order_id: orderId,
+          shipping_brl: shipping,
+          coupon_code: couponInfo?.applied ? couponInfo.code : null,
+          coupon_discount_brl: couponDiscount,
+          store_credit_applied_brl: appliedCredit,
+          final_total_brl: finalTotal,
           payer: {
             email: user.email ?? undefined,
           },
@@ -193,6 +315,12 @@ export default function CheckoutPage() {
         throw new Error(json?.error ?? "Falha ao iniciar pagamento");
       }
 
+      if (json?.paid_with_store_credit) {
+        clear();
+        router.push(`/checkout/success?order=${json.order_id}`);
+        return;
+      }
+
       if (!json?.init_point) {
         throw new Error("O Mercado Pago não retornou a URL de pagamento.");
       }
@@ -202,6 +330,50 @@ export default function CheckoutPage() {
       setCheckoutError(err instanceof Error ? err.message : "Falha ao iniciar pagamento");
     } finally {
       setCreatingPayment(false);
+    }
+  }
+
+  async function handleApplyCoupon() {
+    try {
+      setCouponChecking(true);
+      setCouponError(null);
+
+      const normalized = couponCode.trim().toUpperCase();
+
+      if (!normalized) {
+        setCouponInfo(null);
+        setCouponError("Digite um cupom.");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("checkout_coupons")
+        .select("code, active")
+        .eq("code", normalized)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        setCouponInfo(null);
+        setCouponError("Cupom inválido ou inativo.");
+        return;
+      }
+
+      setCouponInfo({
+        applied: true,
+        code: data.code,
+        active: true,
+      });
+    } catch (err) {
+      console.error("[coupon-apply]", err);
+      setCouponInfo(null);
+      setCouponError("Não foi possível validar o cupom.");
+    } finally {
+      setCouponChecking(false);
     }
   }
 
@@ -322,10 +494,75 @@ export default function CheckoutPage() {
                   <span>{count}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-white/90">
-                  <span>Total</span>
+                <div className="flex items-center justify-between text-white/70">
+                  <span>Subtotal</span>
+                  <span>{formatPrice(subtotal) ?? "—"}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-white/70">
+                  <span>Frete</span>
+                  <span>
+                    {shipping === 0 && subtotal >= Number(settings?.free_shipping_min_brl ?? 0) && Number(settings?.free_shipping_min_brl ?? 0) > 0
+                      ? "Grátis"
+                      : formatPrice(shipping) ?? "—"}
+                  </span>
+                </div>
+
+                <div className="border-t border-white/10 pt-3">
+                  <div className="text-xs text-white/55">Cupom de desconto</div>
+
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={couponCode}
+                      onChange={(e) => {
+                        setCouponCode(e.target.value.toUpperCase());
+                        setCouponError(null);
+                        setCouponInfo(null);
+                      }}
+                      placeholder="Digite seu cupom"
+                      className="flex-1 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white placeholder:text-white/35 outline-none focus:border-orange-400"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={couponChecking}
+                      className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/85 hover:bg-white/10 transition-colors disabled:opacity-50"
+                    >
+                      {couponChecking ? "Validando..." : "Aplicar"}
+                    </button>
+                  </div>
+
+                  {couponError ? (
+                    <div className="mt-2 text-xs text-rose-200">{couponError}</div>
+                  ) : null}
+
+                  {couponInfo?.applied ? (
+                    <div className="mt-2 text-xs text-emerald-200">
+                      Cupom {couponInfo.code} aplicado ({Number(settings?.coupon_discount_percent ?? 0)}% de desconto)
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center justify-between text-white/70">
+                  <span>Desconto do cupom</span>
+                  <span>- {formatPrice(couponDiscount) ?? "—"}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-white/70">
+                  <span>Crédito em conta</span>
+                  <span>- {formatPrice(appliedCredit) ?? "—"}</span>
+                </div>
+
+                <div className="text-[11px] text-white/45">
+                  Saldo disponível: {formatPrice(availableCredit) ?? "—"}
+                </div>
+
+                <div className="flex items-center justify-between text-white/90 border-t border-white/10 pt-3">
+                  <span>Total final</span>
                   <span className="text-lg font-semibold text-orange-300">
-                    {formatPrice(total) ?? "—"}
+                    {formatPrice(finalTotal) ?? "—"}
                   </span>
                 </div>
               </div>

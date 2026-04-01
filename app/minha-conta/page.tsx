@@ -80,6 +80,13 @@ type SellSummary = {
   latestOffer: BuylistOfferRow | null;
 };
 
+type StoreCreditRow = {
+  user_id: string;
+  balance_brl: number | string;
+  created_at: string;
+  updated_at: string;
+};
+
 function onlyDigits(v: string) {
   return (v || '').replace(/\D/g, '');
 }
@@ -171,6 +178,8 @@ export default function MinhaContaPage() {
   });
 
   const email = useMemo(() => user?.email ?? null, [user]);
+
+  const [storeCredit, setStoreCredit] = useState<StoreCreditRow | null>(null);
 
   // Guard: exige login
   useEffect(() => {
@@ -338,6 +347,25 @@ export default function MinhaContaPage() {
           latestOffer: safeSellOffers[0] ?? null,
         });
       }
+
+      const { data: creditRow, error: creditErr } = await supabase
+        .from('user_store_credit')
+        .upsert(
+          { user_id: user.id },
+          { onConflict: 'user_id', ignoreDuplicates: false }
+        )
+        .select('user_id, balance_brl, created_at, updated_at')
+        .single();
+
+      if (!mounted) return;
+
+      if (creditErr) {
+        setErrorMsg(`Erro ao carregar crédito em conta: ${creditErr.message}`);
+        setLoading(false);
+        return;
+      }
+
+      setStoreCredit(creditRow as StoreCreditRow);
 
       setLoading(false);
     }
@@ -550,9 +578,7 @@ export default function MinhaContaPage() {
                     <h2 className={titleClass}>Meus pedidos</h2>
 
                     <p className="text-xs text-white/70">
-                      Aqui você acompanha seus pedidos de{' '}
-                      <span className="font-semibold text-white/85">compra</span> e, em breve,
-                      também suas <span className="font-semibold text-white/85">vendas</span>.
+                      Aqui você acompanha suas compras, suas vendas para a loja e o saldo de crédito disponível em conta.
                     </p>
 
                     <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -660,6 +686,31 @@ export default function MinhaContaPage() {
                           </Link>
                         </div>
                       </div>
+                      <div className="mt-4 rounded-xl border border-white/10 bg-black/50 p-4">
+                        <div className="text-xs text-white/60">Crédito em conta</div>
+
+                        <div className="mt-1 text-sm font-semibold text-white">
+                          {formatMoneyBRL(storeCredit?.balance_brl)}
+                        </div>
+
+                        <div className="mt-2 text-xs text-white/55">
+                          Saldo disponível para usar em compras na Bodega.
+                        </div>
+
+                        <div className="mt-3 space-y-1 text-xs text-white/65">
+                          <div>
+                            <span className="text-white/45">Tipo:</span>{' '}
+                            <span className="text-white/85">Crédito da loja</span>
+                          </div>
+
+                          <div>
+                            <span className="text-white/45">Atualizado em:</span>{' '}
+                            <span className="text-white/85">
+                              {formatDateBR(storeCredit?.updated_at)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="mt-5 flex justify-end">
@@ -667,7 +718,7 @@ export default function MinhaContaPage() {
                         Ver histórico
                       </Link>
                     </div>
-                    
+
                   </div>
                 </div>
               </div>

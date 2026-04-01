@@ -476,7 +476,7 @@ export function SiteHeader() {
                 <span className="hidden sm:inline">Carrinho</span>
 
                 {/* badge */}
-                {count > 0 ? (
+                {mounted && count > 0 ? (
                   <span
                     className="
                       absolute -top-1 -right-1
@@ -521,7 +521,7 @@ export function SiteHeader() {
                     </div>
 
                     <div className="mt-3 text-xs text-white/55">
-                      {count > 0 ? (
+                      {mounted && count > 0 ? (
                         <>
                           <div>{count} item(ns)</div>
 
@@ -622,7 +622,7 @@ export function SiteHeader() {
 
                       <button
                         type="button"
-                        disabled={!isLoggedIn || cartItems.length === 0 || reserving}
+                        disabled={!safeIsLoggedIn || cartItems.length === 0 || reserving}
                         onClick={async () => {
                           await reserveNow();
                           setCartOpen(false);
