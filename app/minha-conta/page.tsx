@@ -710,6 +710,12 @@ export default function MinhaContaPage() {
                             </span>
                           </div>
                         </div>
+
+                        <div className="mt-4">
+                          <Link href="/minha-conta/extrato-credito" className={secondaryBtn}>
+                            Ver extrato
+                          </Link>
+                        </div>
                       </div>
                     </div>
 

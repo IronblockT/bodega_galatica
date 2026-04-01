@@ -227,17 +227,17 @@ export default function CheckoutPage() {
     return Number.isFinite(n) ? n : 0;
   }, [storeCredit]);
 
-  const creditBase = useMemo(() => {
-    return Math.max(subtotal + shipping - couponDiscount, 0);
-  }, [subtotal, shipping, couponDiscount]);
+  const creditEligibleSubtotal = useMemo(() => {
+    return Math.max(subtotal - couponDiscount, 0);
+  }, [subtotal, couponDiscount]);
 
   const appliedCredit = useMemo(() => {
-    return Math.min(availableCredit, creditBase);
-  }, [availableCredit, creditBase]);
+    return Math.min(availableCredit, creditEligibleSubtotal);
+  }, [availableCredit, creditEligibleSubtotal]);
 
   const finalTotal = useMemo(() => {
-    return Math.max(subtotal + shipping - couponDiscount - appliedCredit, 0);
-  }, [subtotal, shipping, couponDiscount, appliedCredit]);
+    return Math.max(creditEligibleSubtotal - appliedCredit + shipping, 0);
+  }, [creditEligibleSubtotal, appliedCredit, shipping]);
 
   if (!items.length) {
     return (

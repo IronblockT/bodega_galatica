@@ -603,6 +603,19 @@ export async function POST(req: Request) {
             balance_brl: Number(newBalance.toFixed(2)),
           }),
         });
+
+        await sb("user_store_credit_ledger", {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: body.user_id,
+            entry_type: "debit",
+            source_type: "checkout",
+            source_id: orderId,
+            amount_brl: Number((-storeCreditApplied).toFixed(2)),
+            balance_after_brl: Number(newBalance.toFixed(2)),
+            description: `Uso de crédito no checkout do pedido ${orderId}`,
+          }),
+        });
       }
 
       await sb(`orders?id=eq.${orderId}`, {
@@ -628,7 +641,9 @@ export async function POST(req: Request) {
             provider_payload: {
               method: "store_credit",
               coupon_code: requestedCouponCode,
-              coupon_discount_brl: Number.isFinite(requestedCouponDiscount) ? requestedCouponDiscount : 0,
+              coupon_discount_brl: Number.isFinite(requestedCouponDiscount)
+                ? requestedCouponDiscount
+                : 0,
               store_credit_applied_brl: storeCreditApplied,
               subtotal_brl: subtotal,
               shipping_brl: shipping,
