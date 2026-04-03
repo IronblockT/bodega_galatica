@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUpWithPassword: async (email, password) => {
         const redirectTo =
           typeof window !== 'undefined'
-            ? `${window.location.origin}/auth/callback`
+            ? 'https://www.bgexchange.com.br'
             : undefined;
 
         const { error } = await supabase.auth.signUp({
