@@ -1,45 +1,4 @@
 import Image from 'next/image';
-import Link from 'next/link';
-
-type MerchItem = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  imageSrc: string;
-  href: string;
-};
-
-const MERCH: MerchItem[] = [
-  {
-    id: 'tee',
-    name: 'Camiseta Bodega Galática',
-    description: 'Algodão premium com estampa exclusiva.',
-    price: 89.9,
-    imageSrc: '/swu/cards/placeholder.png',
-    href: '/merch/camiseta-bodega',
-  },
-  {
-    id: 'playmat',
-    name: 'Playmat Oficial',
-    description: 'Base antiderrapante com arte galáctica.',
-    price: 159.9,
-    imageSrc: '/swu/cards/placeholder.png',
-    href: '/merch/playmat-bodega',
-  },
-  {
-    id: 'sleeves',
-    name: 'Sleeves Premium',
-    description: 'Proteção e estilo para suas cartas.',
-    price: 39.9,
-    imageSrc: '/swu/cards/placeholder.png',
-    href: '/merch/sleeves-bodega',
-  },
-];
-
-function formatBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export function MerchSection() {
   return (
@@ -47,7 +6,21 @@ export function MerchSection() {
       {/* glow quente Tatooine */}
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-orange-400/10 blur-3xl" />
 
-      <div className="mx-auto max-w-6xl px-4 py-16 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-4 py-16 md:grid-cols-2">
+        {/* IMAGEM */}
+        <div className="flex justify-center md:justify-start">
+          <div className="relative w-full max-w-[560px]">
+            <div className="relative aspect-[16/9] w-full">
+              <Image
+                src="/swu/cards/placeholder_merch.png"
+                alt="Placeholder de merch da Bodega Galática"
+                fill
+                className="object-contain"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* TEXTO */}
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-black">
@@ -65,57 +38,6 @@ export function MerchSection() {
             <li>• Ideal para eventos, drafts e jogo casual</li>
             <li>• Qualidade premium, design autoral</li>
           </ul>
-
-          <Link
-            href="/merch"
-            className="inline-flex mt-8 rounded-full border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-black/5 transition"
-          >
-            Ver toda a coleção →
-          </Link>
-        </div>
-
-        {/* PRODUTOS */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {MERCH.map((m) => (
-            <Link
-              key={m.id}
-              href={m.href}
-              className="
-                group rounded-2xl bg-white/80 backdrop-blur
-                ring-1 ring-black/5 shadow-premium
-                hover:shadow-[0_18px_50px_rgba(0,0,0,.14)]
-                transition
-              "
-            >
-              <div className="relative aspect-[3/4] w-full bg-gradient-to-b from-black/5 to-black/0">
-                <Image
-                  src={m.imageSrc}
-                  alt={m.name}
-                  fill
-                  className="object-cover group-hover:scale-[1.03] transition-transform"
-                />
-              </div>
-
-              <div className="p-4">
-                <div className="text-sm font-semibold text-black">
-                  {m.name}
-                </div>
-
-                <div className="mt-1 text-xs text-black/60">
-                  {m.description}
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="text-sm font-semibold text-orange-600">
-                    {formatBRL(m.price)}
-                  </div>
-                  <span className="text-xs text-black/50 group-hover:text-black/70 transition">
-                    Ver →
-                  </span>
-                </div>
-              </div>
-            </Link>
-          ))}
         </div>
       </div>
     </section>

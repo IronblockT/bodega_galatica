@@ -56,7 +56,7 @@ const NAV_ITEMS: NavItem[] = [
       {
         title: 'Atalhos',
         links: [
-          { label: 'Mais Vendidas', href: '/cartas' },
+          { label: 'Em Alta', href: '/#bounties' },
           { label: 'Novidades', href: '/cartas' },
         ],
       },
@@ -82,9 +82,9 @@ const NAV_ITEMS: NavItem[] = [
       {
         links: [
           { label: 'Sobre a Bodega Galática', href: '/sobre' },
-          { label: 'Guias', href: '/guias' },
-          { label: 'Decklists', href: '/decklists' },
-          { label: 'Eventos', href: '/eventos' },
+          { label: 'Guias', href: '/comunidade' },
+          { label: 'Decklists', href: '/comunidade' },
+          { label: 'Eventos', href: '/comunidade' },
           { label: 'BGON', href: '/comunidade' },
         ],
       },
@@ -738,19 +738,6 @@ export function SiteHeader() {
                         role="menuitem"
                       >
                         Minha conta
-                      </Link>
-
-                      <Link
-                        href="/configuracoes"
-                        onClick={() => setAccountOpen(false)}
-                        className="
-                          block rounded-xl px-3 py-2 text-sm
-                          text-white/85 hover:text-white
-                          hover:bg-white/10 transition
-                        "
-                        role="menuitem"
-                      >
-                        Configurações
                       </Link>
 
                       <div className="my-2 h-px bg-white/10" />

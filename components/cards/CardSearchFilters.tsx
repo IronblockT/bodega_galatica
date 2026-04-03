@@ -337,10 +337,7 @@ export function CardSearchFilters() {
               </button>
             );
           })}
-        </div>
-        <p className="mt-2 text-[11px] text-white/45">
-          * Condição ainda não filtra no banco (placeholder).
-        </p>
+        </div>        
       </div>
 
       {/* Em estoque */}
@@ -355,11 +352,7 @@ export function CardSearchFilters() {
           }}
         />
         <span className="text-xs text-white/70">Somente em estoque</span>
-      </div>
-
-      <p className="mb-4 text-[11px] text-white/45">
-        * “Em estoque” será ativado quando conectarmos inventário/listings.
-      </p>
+      </div>      
 
       <div className="mt-6 flex gap-2">
         <button type="button" className={secondaryBtn} onClick={clearFilters}>

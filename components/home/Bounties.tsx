@@ -105,10 +105,12 @@ export function Bounties() {
                 ? `${c.title} — ${c.subtitle}`
                 : c.title;
 
+              const buyHref = `/cartas?q=${encodeURIComponent(c.title)}&page=1`;
+
               return (
                 <Link
                   key={c.id}
-                  href={c.href}
+                  href={buyHref}
                   className="
                       group rounded-2xl bg-white/80 backdrop-blur
                       ring-1 ring-black/5 shadow-premium

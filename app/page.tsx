@@ -8,10 +8,10 @@ import { BackToTop } from '@/components/layout/BackToTop';
 import { SiteFooter } from '@/components/layout/SiteFooter';
 
 export default function Home() {
-  
+
   return (
     <main className="min-h-screen bg-sand">
-      
+
       {/* HERO — TATOOINE */}
       <section className="relative overflow-hidden bg-sand">
         {/* céu / horizonte */}
@@ -75,7 +75,9 @@ export default function Home() {
         </div>
       </section>
       <SetCarousel />
-      <Bounties />
+      <section id="bounties" className="scroll-mt-32">
+        <Bounties />
+      </section>
       <CargoSection />
       <MerchSection />
       <BackToTop />

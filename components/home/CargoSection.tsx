@@ -1,51 +1,11 @@
 import Image from 'next/image';
-import Link from 'next/link';
-
-type CargoProduct = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  imageSrc: string;
-  href: string;
-};
-
-const CARGO_PRODUCTS: CargoProduct[] = [
-  {
-    id: 'bulk',
-    name: 'Bulk Galáctico',
-    description: 'Lote com dezenas de cartas para iniciar sua coleção.',
-    price: 29.9,
-    imageSrc: '/swu/cards/placeholder.png',
-    href: '/produtos/bulk-galactico',
-  },
-  {
-    id: 'chaos',
-    name: 'Chaos Booster',
-    description: 'Booster montado com cartas variadas de vários sets.',
-    price: 19.9,
-    imageSrc: '/swu/cards/placeholder.png',
-    href: '/produtos/chaos-booster',
-  },
-  {
-    id: 'draft',
-    name: 'Bodega Galática Draft Pack',
-    description: 'Booster balanceado para drafts e jogo casual.',
-    price: 24.9,
-    imageSrc: '/swu/cards/placeholder.png',
-    href: '/produtos/bodega-draft',
-  },
-];
-
-function formatBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export function CargoSection() {
   return (
     <section className="relative bg-[#0B0C10]">
       {/* fundo espacial discreto */}
-      <div className="pointer-events-none absolute inset-0 opacity-[0.18]"
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.18]"
         style={{
           backgroundImage: `
             radial-gradient(circle at 20% 30%, rgba(255,255,255,.25) 0 1px, transparent 2px),
@@ -55,7 +15,7 @@ export function CargoSection() {
         }}
       />
 
-      <div className="mx-auto max-w-6xl px-4 py-16 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-4 py-16 md:grid-cols-2">
         {/* TEXTO */}
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-white">
@@ -77,49 +37,19 @@ export function CargoSection() {
           </ul>
         </div>
 
-        {/* PRODUTOS */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {CARGO_PRODUCTS.map((p) => (
-            <Link
-              key={p.id}
-              href={p.href}
-              className="
-                group rounded-2xl bg-white/5 backdrop-blur
-                ring-1 ring-white/10
-                hover:bg-white/10 transition
-              "
-            >
-              {/* imagem */}
-              <div className="relative aspect-[3/4] w-full bg-black/20">
-                <Image
-                  src={p.imageSrc}
-                  alt={p.name}
-                  fill
-                  className="object-cover group-hover:scale-[1.03] transition-transform"
-                />
-              </div>
-
-              {/* texto */}
-              <div className="p-4">
-                <div className="text-sm font-semibold text-white">
-                  {p.name}
-                </div>
-
-                <div className="mt-1 text-xs text-white/60">
-                  {p.description}
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="text-sm font-semibold text-orange-400">
-                    {formatBRL(p.price)}
-                  </div>
-                  <span className="text-xs text-white/60 group-hover:text-white transition">
-                    Ver →
-                  </span>
-                </div>
-              </div>
-            </Link>
-          ))}
+        {/* IMAGEM */}
+        {/* IMAGEM */}
+        <div className="flex justify-center md:justify-end">
+          <div className="relative w-full max-w-[560px]">
+            <div className="relative aspect-[16/9] w-full">
+              <Image
+                src="/swu/cards/placeholder_cargo.png"
+                alt="Placeholder de produtos da Bodega Galática"
+                fill
+                className="object-contain"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </section>

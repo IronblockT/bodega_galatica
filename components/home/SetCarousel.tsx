@@ -12,13 +12,13 @@ type SetItem = {
 };
 
 const SETS: SetItem[] = [
-    { code: 'SOR', name: 'Spark of Rebellion', logoSrc: '/swu/sets/sor.png', href: '/cartas?set=sor' },
-    { code: 'SHD', name: 'Shadows of the Galaxy', logoSrc: '/swu/sets/shd.png', href: '/cartas?set=shd' },
-    { code: 'TWI', name: 'Twilight of the Republic', logoSrc: '/swu/sets/twi.png', href: '/cartas?set=twi' },
-    { code: 'JTL', name: 'Jump to Lightspeed', logoSrc: '/swu/sets/jtl.png', href: '/cartas?set=jtl' },
-    { code: 'LOF', name: 'Legends of the Force', logoSrc: '/swu/sets/lof.png', href: '/cartas?set=lof' },
-    { code: 'SEC', name: 'Secrets of Power', logoSrc: '/swu/sets/sec.png', href: '/cartas?set=sec' },
-    { code: 'LAW', name: 'A Lawless Time', logoSrc: '/swu/sets/law.png', href: '/cartas?set=law' },
+    { code: 'SOR', name: 'Spark of Rebellion', logoSrc: '/swu/sets/sor.png', href: '/cartas?set=SOR&page=1' },
+    { code: 'SHD', name: 'Shadows of the Galaxy', logoSrc: '/swu/sets/shd.png', href: '/cartas?set=SHD&page=1' },
+    { code: 'TWI', name: 'Twilight of the Republic', logoSrc: '/swu/sets/twi.png', href: '/cartas?set=TWI&page=1' },
+    { code: 'JTL', name: 'Jump to Lightspeed', logoSrc: '/swu/sets/jtl.png', href: '/cartas?set=JTL&page=1' },
+    { code: 'LOF', name: 'Legends of the Force', logoSrc: '/swu/sets/lof.png', href: '/cartas?set=LOF&page=1' },
+    { code: 'SEC', name: 'Secrets of Power', logoSrc: '/swu/sets/sec.png', href: '/cartas?set=SEC&page=1' },
+    { code: 'LAW', name: 'A Lawless Time', logoSrc: '/swu/sets/law.png', href: '/cartas?set=LAW&page=1' },
 ];
 
 export function SetCarousel() {
