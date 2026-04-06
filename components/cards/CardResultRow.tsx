@@ -5,6 +5,8 @@ import { ConditionSelector } from "./ConditionSelector";
 import { QuantitySelector } from "./QuantitySelector";
 import Link from "next/link";
 import { useCart } from "@/components/cart/CartProvider";
+import { useAuth } from "@/components/hooks/useAuth";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 function getTypeLabel(v: any): string {
   if (!v) return "—";
@@ -56,6 +58,11 @@ export function CardResultRow({ card }: any) {
   }, [card.uid, card.finish, condition]);
 
   const { addItem } = useCart();
+
+  const { isLoggedIn } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   return (
     <div className="flex gap-4 rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur">
@@ -133,6 +140,13 @@ export function CardResultRow({ card }: any) {
           // ✅ ainda não estamos adicionando no carrinho aqui (isso é o próximo passo)
           onClick={() => {
             if (!variant?.sku_key || qty <= 0) return;
+
+            if (!isLoggedIn) {
+              const qs = searchParams.toString();
+              const next = qs ? `${pathname}?${qs}` : pathname;
+              router.push(`/entrar?next=${encodeURIComponent(next)}`);
+              return;
+            }
 
             addItem(variant.sku_key, qty);
 

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/components/hooks/useAuth";
 
 type Quote = {
   sku_key: string;
@@ -57,24 +58,24 @@ type QuoteApiResponse =
 
 type CreateOfferResponse =
   | {
-      ok: true;
-      offer: {
-        offer_id: string;
-        offer_status: string;
-        payout_type: "cash" | "store_credit";
-        final_amount: number | string;
-        cash_reserved_amount: number | string;
-        manual_review_required: boolean;
-        review_reason: string | null;
-        item_id: string;
-        item_status: string;
-      };
-    }
-  | {
-      ok: false;
-      error: string;
-      detail?: unknown;
+    ok: true;
+    offer: {
+      offer_id: string;
+      offer_status: string;
+      payout_type: "cash" | "store_credit";
+      final_amount: number | string;
+      cash_reserved_amount: number | string;
+      manual_review_required: boolean;
+      review_reason: string | null;
+      item_id: string;
+      item_status: string;
     };
+  }
+  | {
+    ok: false;
+    error: string;
+    detail?: unknown;
+  };
 
 type PayoutOption = {
   key: "store_credit" | "cash";
@@ -86,6 +87,8 @@ type PayoutOption = {
 export function RecebimentoClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const { isLoggedIn } = useAuth();
 
   const sku = String(searchParams.get("sku") ?? "").trim();
   const qty = Math.max(parseInt(String(searchParams.get("qty") ?? "1"), 10) || 1, 1);
@@ -235,6 +238,13 @@ export function RecebimentoClient() {
 
   async function handleContinue() {
     if (!quote || !selectedPayout) return;
+
+    if (!isLoggedIn) {
+      const qs = searchParams.toString();
+      const next = qs ? `${pathname}?${qs}` : pathname;
+      router.push(`/entrar?next=${encodeURIComponent(next)}`);
+      return;
+    }
 
     try {
       setSubmitting(true);
