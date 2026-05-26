@@ -1,9 +1,35 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
-import { useAuth } from '@/components/hooks/useAuth';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
+import { useAuth } from "@/components/hooks/useAuth";
 
-export type CartItem = { sku_key: string; qty: number };
+export type CartItemType = "card" | "product";
+
+export type CartItem = {
+  item_type: CartItemType;
+
+  /**
+   * Para cartas: item_key = sku_key
+   * Para produtos: item_key = product_id
+   */
+  item_key: string;
+
+  /**
+   * Mantido por compatibilidade com o código atual.
+   * Para cartas: sku_key real.
+   * Para produtos: product:{product_id}
+   */
+  sku_key: string;
+
+  qty: number;
+};
 
 type ReserveResponse = {
   ok: boolean;
@@ -22,7 +48,16 @@ type CartContextValue = {
   reserving: boolean;
   lastReserveError: string | null;
 
+  /**
+   * Mantido para singles.
+   */
   addItem: (sku_key: string, qty: number) => void;
+
+  /**
+   * Novo método para produtos gerais.
+   */
+  addProduct: (product_id: string, qty: number) => void;
+
   setQty: (sku_key: string, qty: number) => void;
   removeItem: (sku_key: string) => void;
   clear: () => Promise<void>;
@@ -45,6 +80,70 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function normalizeCartItem(raw: any): CartItem | null {
+  const qty = Math.max(0, Number(raw?.qty ?? 0));
+
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return null;
+  }
+
+  const rawItemType = String(raw?.item_type ?? "").trim();
+
+  if (rawItemType === "product") {
+    const productId = String(
+      raw?.item_key ??
+        raw?.product_id ??
+        String(raw?.sku_key ?? "").replace(/^product:/, "")
+    ).trim();
+
+    if (!productId) return null;
+
+    return {
+      item_type: "product",
+      item_key: productId,
+      sku_key: `product:${productId}`,
+      qty,
+    };
+  }
+
+  const skuKey = String(raw?.sku_key ?? raw?.item_key ?? "").trim();
+
+  if (!skuKey) {
+    return null;
+  }
+
+  return {
+    item_type: "card",
+    item_key: skuKey,
+    sku_key: skuKey,
+    qty,
+  };
+}
+
+function normalizeCartItems(raw: any): CartItem[] {
+  if (!Array.isArray(raw)) return [];
+
+  const map = new Map<string, CartItem>();
+
+  for (const entry of raw) {
+    const item = normalizeCartItem(entry);
+    if (!item) continue;
+
+    const existing = map.get(item.sku_key);
+
+    if (existing) {
+      map.set(item.sku_key, {
+        ...existing,
+        qty: existing.qty + item.qty,
+      });
+    } else {
+      map.set(item.sku_key, item);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { session, isLoggedIn } = useAuth();
 
@@ -57,10 +156,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // load LS
   useEffect(() => {
-    const saved = readJson<CartItem[]>(LS_KEY, []);
-    setItems(Array.isArray(saved) ? saved : []);
+    const saved = readJson<any[]>(LS_KEY, []);
+    setItems(normalizeCartItems(saved));
 
-    const savedOrder = readJson<{ order_id?: string; expires_at?: string | null }>(LS_ORDER, {});
+    const savedOrder = readJson<{ order_id?: string; expires_at?: string | null }>(
+      LS_ORDER,
+      {}
+    );
+
     setOrderId(savedOrder.order_id ?? null);
     setExpiresAt(savedOrder.expires_at ?? null);
   }, []);
@@ -72,37 +175,113 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // persist order tracking
   useEffect(() => {
-    localStorage.setItem(LS_ORDER, JSON.stringify({ order_id: orderId, expires_at: expiresAt }));
+    localStorage.setItem(
+      LS_ORDER,
+      JSON.stringify({
+        order_id: orderId,
+        expires_at: expiresAt,
+      })
+    );
   }, [orderId, expiresAt]);
 
-  const count = useMemo(() => items.reduce((acc, it) => acc + (it.qty ?? 0), 0), [items]);
+  const count = useMemo(
+    () => items.reduce((acc, it) => acc + (it.qty ?? 0), 0),
+    [items]
+  );
 
-  const addItem = (sku_key: string, qty: number) => {
-    const q = Math.max(1, Number(qty || 1));
+  const addCartItem = useCallback((input: CartItem) => {
+    const q = Math.max(1, Number(input.qty || 1));
+
     setItems((prev) => {
-      const idx = prev.findIndex((x) => x.sku_key === sku_key);
+      const idx = prev.findIndex((x) => x.sku_key === input.sku_key);
+
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = { ...copy[idx], qty: copy[idx].qty + q };
+        copy[idx] = {
+          ...copy[idx],
+          qty: copy[idx].qty + q,
+        };
         return copy;
       }
-      return [...prev, { sku_key, qty: q }];
-    });
-  };
 
-  const setQty = (sku_key: string, qty: number) => {
+      return [
+        ...prev,
+        {
+          ...input,
+          qty: q,
+        },
+      ];
+    });
+
+    // Qualquer mudança no carrinho invalida a reserva anterior.
+    setOrderId(null);
+    setExpiresAt(null);
+    setLastReserveError(null);
+  }, []);
+
+  const addItem = useCallback(
+    (sku_key: string, qty: number) => {
+      const skuKey = String(sku_key ?? "").trim();
+      if (!skuKey) return;
+
+      addCartItem({
+        item_type: "card",
+        item_key: skuKey,
+        sku_key: skuKey,
+        qty,
+      });
+    },
+    [addCartItem]
+  );
+
+  const addProduct = useCallback(
+    (product_id: string, qty: number) => {
+      const productId = String(product_id ?? "").trim();
+      if (!productId) return;
+
+      addCartItem({
+        item_type: "product",
+        item_key: productId,
+        sku_key: `product:${productId}`,
+        qty,
+      });
+    },
+    [addCartItem]
+  );
+
+  const setQty = useCallback((sku_key: string, qty: number) => {
+    const skuKey = String(sku_key ?? "").trim();
     const q = Math.max(0, Number(qty || 0));
+
     setItems((prev) => {
-      const copy = prev.map((x) => (x.sku_key === sku_key ? { ...x, qty: q } : x));
+      const copy = prev.map((x) =>
+        x.sku_key === skuKey
+          ? {
+              ...x,
+              qty: q,
+            }
+          : x
+      );
+
       return copy.filter((x) => x.qty > 0);
     });
-  };
 
-  const removeItem = (sku_key: string) => {
-    setItems((prev) => prev.filter((x) => x.sku_key !== sku_key));
-  };
+    setOrderId(null);
+    setExpiresAt(null);
+    setLastReserveError(null);
+  }, []);
 
-  const clear = async () => {
+  const removeItem = useCallback((sku_key: string) => {
+    const skuKey = String(sku_key ?? "").trim();
+
+    setItems((prev) => prev.filter((x) => x.sku_key !== skuKey));
+
+    setOrderId(null);
+    setExpiresAt(null);
+    setLastReserveError(null);
+  }, []);
+
+  const clear = useCallback(async () => {
     try {
       if (orderId) {
         await fetch("/api/cart/release", {
@@ -121,7 +300,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setExpiresAt(null);
       setLastReserveError(null);
     }
-  };
+  }, [orderId]);
 
   const reserveNow = useCallback(async () => {
     if (!isLoggedIn) return;
@@ -161,7 +340,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isLoggedIn, session?.access_token, items, orderId]);
 
-  // ✅ auto-renova a cada 12 minutos (enquanto tiver carrinho)
+  // auto-renova a cada 12 minutos enquanto tiver carrinho
   useEffect(() => {
     if (!isLoggedIn) return;
     if (!session?.access_token) return;
@@ -183,12 +362,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       reserving,
       lastReserveError,
       addItem,
+      addProduct,
       setQty,
       removeItem,
       clear,
       reserveNow,
     }),
-    [items, count, orderId, expiresAt, reserving, lastReserveError]
+    [
+      items,
+      count,
+      orderId,
+      expiresAt,
+      reserving,
+      lastReserveError,
+      addItem,
+      addProduct,
+      setQty,
+      removeItem,
+      clear,
+      reserveNow,
+    ]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -196,6 +389,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
 export function useCart() {
   const ctx = useContext(CartContext);
-  if (!ctx) throw new Error("useCart must be used inside <CartProvider>");
+
+  if (!ctx) {
+    throw new Error("useCart must be used inside <CartProvider>");
+  }
+
   return ctx;
 }

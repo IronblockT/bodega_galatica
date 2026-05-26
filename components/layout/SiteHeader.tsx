@@ -63,15 +63,15 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
-    label: 'Acessórios',
+    label: 'Produtos',
     sections: [
       {
         links: [
-          { label: 'Sleeves', href: '/acessorios' },
-          { label: 'Deck Boxes', href: '/acessorios' },
-          { label: 'Playmats', href: '/acessorios' },
-          { label: 'Binders', href: '/acessorios' },
-          { label: 'Marcadores', href: '/acessorios' },
+          { label: 'Todos os produtos', href: '/produtos' },
+          { label: 'Produtos selados', href: '/produtos?category=sealed' },
+          { label: 'Acessórios', href: '/produtos?category=accessory' },
+          { label: 'Merch', href: '/produtos?category=merch' },
+          { label: 'Produtos Bodega', href: '/produtos?category=bodega_product' },
         ],
       },
     ],

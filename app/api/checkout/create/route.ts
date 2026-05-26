@@ -29,16 +29,24 @@ type CardRow = {
 };
 
 type EnrichedItem = {
-  sku_key: string;
+  item_type?: "card" | "product";
+  sku_key: string | null;
+  product_id?: string | null;
   qty: number;
   unit_price_brl: number;
   line_total_brl: number;
   snapshot: {
+    item_type?: "card" | "product";
     title: string;
-    card_uid: string | null;
-    finish: string | null;
-    condition: string | null;
-    promo_type: string | null;
+    card_uid?: string | null;
+    product_id?: string | null;
+    slug?: string | null;
+    category?: string | null;
+    expansion_code?: string | null;
+    image_url?: string | null;
+    finish?: string | null;
+    condition?: string | null;
+    promo_type?: string | null;
     unit_price_brl: number;
   };
   mp_item: {
@@ -268,20 +276,31 @@ export async function POST(req: Request) {
       }
 
       const itemRes = await sb(
-        `order_items?select=sku_key,qty,unit_price_brl,line_total_brl,item_snapshot&order_id=eq.${encodeURIComponent(
+        `order_items?select=item_type,sku_key,product_id,product_slug,product_category,product_image_url,qty,unit_price_brl,line_total_brl,item_snapshot&order_id=eq.${encodeURIComponent(
           orderId
         )}`,
         { method: "GET" }
       );
 
       const orderItems = (await itemRes.json()) as Array<{
-        sku_key: string;
+        item_type?: "card" | "product" | null;
+        sku_key?: string | null;
+        product_id?: string | null;
+        product_slug?: string | null;
+        product_category?: string | null;
+        product_image_url?: string | null;
         qty: number;
         unit_price_brl?: number | string | null;
         line_total_brl?: number | string | null;
         item_snapshot?: {
+          item_type?: "card" | "product" | null;
           title?: string;
           card_uid?: string | null;
+          product_id?: string | null;
+          slug?: string | null;
+          category?: string | null;
+          expansion_code?: string | null;
+          image_url?: string | null;
           finish?: string | null;
           condition?: string | null;
           promo_type?: string | null;
@@ -298,19 +317,38 @@ export async function POST(req: Request) {
 
       enriched = orderItems.map((x) => {
         const snapshot = x.item_snapshot ?? {};
-        const title = snapshot.title ?? x.sku_key;
+        const itemType =
+          x.item_type === "product" || snapshot.item_type === "product"
+            ? "product"
+            : "card";
+
+        const fallbackTitle =
+          itemType === "product"
+            ? x.product_slug ?? x.product_id ?? "Produto"
+            : x.sku_key ?? "Carta";
+
+        const title = snapshot.title ?? fallbackTitle;
+
         const unitPrice = asNumber(x.unit_price_brl ?? snapshot.unit_price_brl ?? 0);
         const qty = Number(x.qty ?? 0);
         const lineTotal = asNumber(x.line_total_brl ?? unitPrice * qty);
 
         return {
-          sku_key: x.sku_key,
+          item_type: itemType,
+          sku_key: x.sku_key ?? null,
+          product_id: x.product_id ?? snapshot.product_id ?? null,
           qty,
           unit_price_brl: unitPrice,
           line_total_brl: Number.isFinite(lineTotal) ? lineTotal : unitPrice * qty,
           snapshot: {
+            item_type: itemType,
             title,
             card_uid: snapshot.card_uid ?? null,
+            product_id: x.product_id ?? snapshot.product_id ?? null,
+            slug: x.product_slug ?? snapshot.slug ?? null,
+            category: x.product_category ?? snapshot.category ?? null,
+            expansion_code: snapshot.expansion_code ?? null,
+            image_url: x.product_image_url ?? snapshot.image_url ?? null,
             finish: snapshot.finish ?? null,
             condition: snapshot.condition ?? null,
             promo_type: snapshot.promo_type ?? null,
@@ -568,29 +606,35 @@ export async function POST(req: Request) {
     }
 
     if (total <= 0) {
+      const storeCreditApplied = Number.isFinite(requestedStoreCredit)
+        ? requestedStoreCredit
+        : 0;
+
       if (storeCreditApplied > 0) {
         const creditRes = await sb(
-          `user_store_credit?select=user_id,balance_brl&user_id=eq.${encodeURIComponent(body.user_id)}&limit=1`,
+          `user_store_credit?select=user_id,balance_brl&user_id=eq.${encodeURIComponent(
+            body.user_id
+          )}&limit=1`,
           { method: "GET" }
         );
 
         const creditRows = (await creditRes.json()) as Array<{
-          user_id?: string;
-          balance_brl?: number | string | null;
+          user_id: string;
+          balance_brl: number | string | null;
         }>;
+
         const creditRow = creditRows?.[0];
+        const currentBalance = asNumber(creditRow?.balance_brl ?? 0);
 
-        if (!creditRow?.user_id) {
-          return NextResponse.json(
-            { error: "Saldo de crédito não encontrado para o usuário." },
-            { status: 409 }
-          );
-        }
-
-        const currentBalance = asNumber(creditRow.balance_brl ?? 0);
         if (!Number.isFinite(currentBalance) || currentBalance < storeCreditApplied) {
           return NextResponse.json(
-            { error: "Saldo de crédito insuficiente para concluir o pedido." },
+            {
+              error: "Crédito em conta insuficiente",
+              detail: {
+                currentBalance,
+                storeCreditApplied,
+              },
+            },
             { status: 409 }
           );
         }
@@ -621,42 +665,32 @@ export async function POST(req: Request) {
       await sb(`orders?id=eq.${orderId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          status: "paid",
+          status: "reserved",
           total_brl: 0,
           discount_brl: discount,
           shipping_brl: shipping,
           subtotal_brl: subtotal,
+          notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
         }),
       });
 
-      try {
-        await sb("payments", {
-          method: "POST",
-          body: JSON.stringify({
-            order_id: orderId,
-            provider: "store_credit",
-            status: "approved",
-            amount_brl: 0,
-            currency: "BRL",
-            provider_payload: {
-              method: "store_credit",
-              coupon_code: requestedCouponCode,
-              coupon_discount_brl: Number.isFinite(requestedCouponDiscount)
-                ? requestedCouponDiscount
-                : 0,
-              store_credit_applied_brl: storeCreditApplied,
-              subtotal_brl: subtotal,
-              shipping_brl: shipping,
-              total_brl: 0,
-            },
-          }),
-        });
-      } catch (err: unknown) {
-        console.log("[checkout/create] store_credit payment insert failed", {
-          orderId,
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
+      await callRpc("rpc_checkout_commit", {
+        p_order_id: orderId,
+        p_provider: "store_credit",
+        p_provider_payment_id: `store_credit:${orderId}`,
+        p_amount_brl: 0,
+        p_provider_payload: {
+          method: "store_credit",
+          coupon_code: requestedCouponCode,
+          coupon_discount_brl: Number.isFinite(requestedCouponDiscount)
+            ? requestedCouponDiscount
+            : 0,
+          store_credit_applied_brl: storeCreditApplied,
+          subtotal_brl: subtotal,
+          shipping_brl: shipping,
+          total_brl: 0,
+        },
+      });
 
       return NextResponse.json({
         order_id: orderId,
