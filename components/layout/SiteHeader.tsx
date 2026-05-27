@@ -223,10 +223,11 @@ export function SiteHeader() {
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
 
-  // ✅ carrinho
   const { count, items: cartItems, reserving, lastReserveError, expiresAt, reserveNow, clear } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const cartRef = useRef<HTMLDivElement>(null);
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [cartDetails, setCartDetails] = useState<CartItemDetail[]>([]);
   const [cartDetailsLoading, setCartDetailsLoading] = useState(false);
@@ -242,14 +243,21 @@ export function SiteHeader() {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    setOpenLabel(null);
+    setAccountOpen(false);
+    setCartOpen(false);
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   async function handleLogout() {
     await signOut();
     setAccountOpen(false);
     setCartOpen(false);
+    setMobileMenuOpen(false);
     router.push('/');
   }
 
-  // Fecha ao clicar fora
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
@@ -271,13 +279,13 @@ export function SiteHeader() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fecha com ESC
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setOpenLabel(null);
         setAccountOpen(false);
         setCartOpen(false);
+        setMobileMenuOpen(false);
       }
     }
 
@@ -385,18 +393,140 @@ export function SiteHeader() {
     setOpenLabel(null);
     setAccountOpen(false);
     setCartOpen(false);
+    setMobileMenuOpen(false);
   }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 w-full">
-      {/* HEADER PRINCIPAL */}
-      <div className="bg-[#07080A]">
+      {/* MOBILE HEADER */}
+      <div className="bg-[#07080A] md:hidden">
+        <div className="sunset-line" />
+
+        <div className="flex h-20 items-center justify-between gap-3 px-4">
+          <Link href="/" className="flex shrink-0 items-center">
+            <div className="relative h-16 w-28">
+              <Image
+                src="/logo-bodega-galatica.png"
+                alt="Bodega Galática"
+                fill
+                priority
+                className="object-contain scale-[1.28] drop-shadow-[0_16px_35px_rgba(0,0,0,.65)]"
+              />
+            </div>
+          </Link>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href="/carrinho"
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/85"
+              aria-label="Carrinho"
+            >
+              <CartIcon className="h-5 w-5" />
+
+              {mounted && count > 0 ? (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-bold text-[#0B0C10]">
+                  {count > 99 ? "99+" : count}
+                </span>
+              ) : null}
+            </Link>
+
+            {!authReady ? (
+              <div className="h-10 w-10 animate-pulse rounded-full border border-white/10 bg-white/5" />
+            ) : !safeIsLoggedIn ? (
+              <Link
+                href="/entrar"
+                className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/85"
+              >
+                Entrar
+              </Link>
+            ) : (
+              <Link
+                href="/minha-conta"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/85"
+                aria-label="Minha conta"
+              >
+                {avatarKey ? (
+                  <img
+                    src={`/avatars/${avatarKey}.png`}
+                    alt="Avatar"
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold">{avatarText}</span>
+                )}
+              </Link>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-xl text-white/85"
+              aria-label="Abrir menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? "×" : "☰"}
+            </button>
+          </div>
+        </div>
+
+        {mobileMenuOpen ? (
+          <div className="max-h-[calc(100vh-80px)] overflow-y-auto border-t border-white/10 bg-[#0B0C10]/98 px-4 py-4 shadow-2xl">
+            <form onSubmit={handleSearchSubmit} className="mb-4">
+              <input
+                type="search"
+                placeholder="Buscar cartas"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/25"
+              />
+            </form>
+
+            <div className="space-y-4">
+              {items.map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border border-white/10 bg-white/[0.03] p-3"
+                >
+                  <div className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-orange-300">
+                    {item.label}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-1">
+                    {item.sections
+                      .flatMap((section) => section.links)
+                      .map((link) => (
+                        <Link
+                          key={`${item.label}-${link.href}-${link.label}`}
+                          href={link.href}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="rounded-xl px-3 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white"
+                        >
+                          {link.label}
+                        </Link>
+                      ))}
+                  </div>
+                </div>
+              ))}
+
+              <Link
+                href="/vender"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block rounded-2xl bg-gradient-to-r from-orange-400 to-orange-500 px-4 py-3 text-center text-sm font-black uppercase tracking-wide text-[#0B0C10]"
+              >
+                Venda suas Cartas!
+              </Link>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* DESKTOP HEADER PRINCIPAL */}
+      <div className="hidden bg-[#07080A] md:block">
         <div className="pointer-events-none absolute left-0 right-0 top-0 h-24 bg-gradient-to-b from-amber-500/10 via-rose-500/5 to-transparent" />
 
         <div className="mx-auto flex h-24 max-w-6xl items-center gap-6 px-4">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-4 shrink-0">
-            <div className="relative h-24 w-40 flex items-center justify-center">
+          <Link href="/" className="flex shrink-0 items-center gap-4">
+            <div className="relative flex h-24 w-40 items-center justify-center">
               <Image
                 src="/logo-bodega-galatica.png"
                 alt="Bodega Galática"
@@ -417,7 +547,6 @@ export function SiteHeader() {
             </span>
           </Link>
 
-          {/* Busca (centro) */}
           <div className="mx-6 hidden w-full max-w-xl md:block">
             <form onSubmit={handleSearchSubmit} className="relative">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35">
@@ -448,9 +577,7 @@ export function SiteHeader() {
             </form>
           </div>
 
-          {/* Ações (direita) */}
           <nav className="ml-auto flex items-center gap-2">
-            {/* Comprar */}
             <Link
               href="/cartas"
               className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/85 hover:bg-white/10 hover:border-white/25 hover:text-white transition"
@@ -458,7 +585,6 @@ export function SiteHeader() {
               Comprar
             </Link>
 
-            {/* ✅ Carrinho (produção) */}
             <div className="relative" ref={cartRef}>
               <button
                 type="button"
@@ -475,7 +601,6 @@ export function SiteHeader() {
                 <CartIcon className="h-5 w-5" />
                 <span className="hidden sm:inline">Carrinho</span>
 
-                {/* badge */}
                 {mounted && count > 0 ? (
                   <span
                     className="
@@ -550,7 +675,6 @@ export function SiteHeader() {
                       </div>
                     ) : null}
 
-                    {/* itens (versão mínima: sku + qty) */}
                     {cartItems.length > 0 ? (
                       <div className="mt-4 max-h-[280px] overflow-auto pr-1 space-y-2">
                         {cartDetailsLoading ? (
@@ -606,7 +730,6 @@ export function SiteHeader() {
                       </div>
                     ) : null}
 
-                    {/* ações */}
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       <Link
                         href="/carrinho"
@@ -629,11 +752,11 @@ export function SiteHeader() {
                           router.push('/checkout');
                         }}
                         className="
-    rounded-full bg-orange-500
-    px-4 py-2 text-xs font-semibold text-[#0B0C10]
-    hover:bg-orange-600 transition-colors
-    disabled:opacity-40
-  "
+                          rounded-full bg-orange-500
+                          px-4 py-2 text-xs font-semibold text-[#0B0C10]
+                          hover:bg-orange-600 transition-colors
+                          disabled:opacity-40
+                        "
                       >
                         {reserving ? 'Preparando...' : 'Finalizar compra'}
                       </button>
@@ -664,7 +787,6 @@ export function SiteHeader() {
               )}
             </div>
 
-            {/* Vender */}
             <Link
               href="/vender"
               className={[
@@ -678,7 +800,6 @@ export function SiteHeader() {
               Vender
             </Link>
 
-            {/* Entrar (ou Avatar) — sempre por último */}
             {!authReady ? (
               <div className="h-10 w-20 rounded-full border border-white/10 bg-white/5 animate-pulse" />
             ) : !safeIsLoggedIn ? (
@@ -765,8 +886,8 @@ export function SiteHeader() {
         <div className="sunset-line" />
       </div>
 
-      {/* SUBHEADER (click-based) */}
-      <div className="bg-[#0B0C10]" ref={navRef}>
+      {/* DESKTOP SUBHEADER */}
+      <div className="hidden bg-[#0B0C10] md:block" ref={navRef}>
         <div className="mx-auto flex h-12 max-w-6xl items-center px-4">
           {items.map((item) => (
             <Dropdown
@@ -778,7 +899,6 @@ export function SiteHeader() {
             />
           ))}
 
-          {/* CTA vender no subheader */}
           <div className="ml-auto flex w-[260px] justify-end">
             <Link
               href="/vender"
@@ -791,16 +911,6 @@ export function SiteHeader() {
               ].join(' ')}
             >
               Venda suas Cartas!
-            </Link>
-          </div>
-
-          {/* Mobile: link de busca */}
-          <div className="md:hidden ml-auto">
-            <Link
-              href="/cartas"
-              className="rounded-full px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors"
-            >
-              Buscar
             </Link>
           </div>
         </div>

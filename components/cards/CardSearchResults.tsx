@@ -29,7 +29,10 @@ type ApiCard = {
   image_back_url: string | null;
 
   finish: string;
-  variants: Record<string, { price: number; stock: number; sku_key: string; promo_type?: string }>;
+  variants: Record<
+    string,
+    { price: number; stock: number; sku_key: string; promo_type?: string }
+  >;
   recommended_condition: string;
 };
 
@@ -43,25 +46,20 @@ type ApiResponse = {
 };
 
 const secondaryBtn =
-  "rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  "flex-1 rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none";
 
 function toMockRow(card: ApiCard) {
   const recommended = card.recommended_condition ?? "NM";
 
   return {
-    // precisa ser único por row (card_uid + finish)
     id: `${card.card_uid}::${card.finish}`,
-
     uid: card.card_uid,
     name: card.subtitle ? `${card.title}, ${card.subtitle}` : card.title,
     set: card.expansion_code,
-
     finish: card.finish,
-
     type: card.card_type_label ?? "—",
     image: card.image_front_url ?? "/placeholder-card.png",
     rules_text: card.rules_text ?? "",
-
     recommendedCondition: recommended,
     variants: card.variants ?? {},
   };
@@ -90,10 +88,11 @@ export function CardSearchResults() {
   const traits = sp.get("traits") ?? "";
   const keywords = sp.get("keywords") ?? "";
 
-  const stock = sp.get("stock") ?? ""; // "1" ou ""
+  const stock = sp.get("stock") ?? "";
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
+
     if (q) params.set("q", q);
     if (setCode) params.set("set", setCode);
     if (type) params.set("type", type);
@@ -103,11 +102,11 @@ export function CardSearchResults() {
     if (traits) params.set("traits", traits);
     if (keywords) params.set("keywords", keywords);
 
-    // ✅ importante: stock entra aqui e depende dele
     if (stock) params.set("stock", stock);
 
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
+
     return params.toString();
   }, [
     q,
@@ -117,7 +116,7 @@ export function CardSearchResults() {
     aspects,
     traits,
     keywords,
-    stock, // ✅ faltava
+    stock,
     page,
     pageSize,
   ]);
@@ -130,11 +129,14 @@ export function CardSearchResults() {
         setLoading(true);
         setErrorMsg(null);
 
-        const res = await fetch(`/api/cards?${queryString}`, { cache: "no-store" });
+        const res = await fetch(`/api/cards?${queryString}`, {
+          cache: "no-store",
+        });
 
-        // se o backend cair (500 sem JSON), evita crash
         const text = await res.text();
+
         let json: ApiResponse | null = null;
+
         try {
           json = JSON.parse(text) as ApiResponse;
         } catch {
@@ -156,6 +158,7 @@ export function CardSearchResults() {
         setLoading(false);
       } catch (err: any) {
         if (!mounted) return;
+
         setErrorMsg(err?.message ?? "Falha ao buscar cartas.");
         setItems([]);
         setTotal(0);
@@ -172,46 +175,51 @@ export function CardSearchResults() {
 
   function goToPage(nextPage: number) {
     const params = new URLSearchParams(sp.toString());
+
     params.set("page", String(nextPage));
+
     router.push(`${pathname}?${params.toString()}`);
   }
 
   const rows = useMemo(() => items.map(toMockRow), [items]);
 
   return (
-    <div>
-      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between text-sm text-white/60">
+    <div className="w-full min-w-0">
+      <div className="mb-4 flex flex-col gap-3 text-sm text-white/60 sm:flex-row sm:items-center sm:justify-between">
         <span>
           {loading ? "Carregando..." : `${total} resultado${total === 1 ? "" : "s"}`}
         </span>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <span className="text-xs text-white/45">
             Página {page} de {totalPages}
           </span>
 
-          <button
-            className={secondaryBtn}
-            disabled={page <= 1 || loading}
-            onClick={() => goToPage(page - 1)}
-          >
-            Anterior
-          </button>
-          <button
-            className={secondaryBtn}
-            disabled={page >= totalPages || loading}
-            onClick={() => goToPage(page + 1)}
-          >
-            Próxima
-          </button>
+          <div className="flex gap-2">
+            <button
+              className={secondaryBtn}
+              disabled={page <= 1 || loading}
+              onClick={() => goToPage(page - 1)}
+            >
+              Anterior
+            </button>
+
+            <button
+              className={secondaryBtn}
+              disabled={page >= totalPages || loading}
+              onClick={() => goToPage(page + 1)}
+            >
+              Próxima
+            </button>
+          </div>
         </div>
       </div>
 
-      {errorMsg && (
+      {errorMsg ? (
         <div className="mb-4 rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-sm text-rose-200 backdrop-blur">
           {errorMsg}
         </div>
-      )}
+      ) : null}
 
       {loading ? (
         <div className="text-sm text-white/60">Buscando cartas…</div>

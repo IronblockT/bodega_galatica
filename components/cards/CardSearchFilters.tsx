@@ -1,5 +1,3 @@
-//CardSearchFilters
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,15 +14,18 @@ type MetaResponse = {
 };
 
 const inputClass =
-  "w-full rounded-md border border-white/10 bg-black px-3 py-2 text-sm text-white outline-none focus:border-white/30";
+  "w-full rounded-md border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-white/30";
+
 const labelClass = "mb-1 block text-xs text-white/60";
+
 const selectClass =
-  "w-full rounded-md border border-white/10 bg-black px-3 py-2 text-sm text-white";
+  "w-full rounded-md border border-white/10 bg-black px-3 py-2.5 text-sm text-white";
 
 const secondaryBtn =
-  "flex-1 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors";
+  "w-full rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:flex-1";
+
 const primaryBtn =
-  "flex-1 rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold text-[#0B0C10] hover:bg-orange-600 transition-colors";
+  "w-full rounded-full bg-orange-500 px-4 py-2.5 text-xs font-semibold text-[#0B0C10] transition-colors hover:bg-orange-600 sm:flex-1";
 
 const ASPECTS = [
   { key: "Aggression", label: "Aggression", icon: "/aspects/Aggression.png" },
@@ -61,14 +62,10 @@ export function CardSearchFilters() {
   const [metaLoading, setMetaLoading] = useState(true);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [sets, setSets] = useState<MetaSet[]>([]);
-  const [types, setTypes] = useState<string[]>([]);
 
-  // Estado local (só aplica quando clica "Aplicar")
   const [q, setQ] = useState(sp.get("q") ?? "");
   const [setCode, setSetCode] = useState(sp.get("set") ?? "");
   const [cardType, setCardType] = useState(sp.get("type") ?? "");
-
-  // (placeholder por hora — ainda não temos estoque/condição no banco)
   const [condition, setCondition] = useState(sp.get("cond") ?? "");
   const [inStock, setInStock] = useState(sp.get("stock") === "1");
 
@@ -90,7 +87,7 @@ export function CardSearchFilters() {
       params.delete("aspects");
     }
 
-    params.set("page", "1"); // reset paginação
+    params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
   }
 
@@ -113,7 +110,6 @@ export function CardSearchFilters() {
       }
 
       setSets(json.sets ?? []);
-      setTypes(json.types ?? []);
       setMetaLoading(false);
     })();
 
@@ -122,7 +118,6 @@ export function CardSearchFilters() {
     };
   }, []);
 
-  // manter o form sincronizado se o usuário navegar pelo back/forward
   useEffect(() => {
     setQ(sp.get("q") ?? "");
     setSetCode(sp.get("set") ?? "");
@@ -131,10 +126,6 @@ export function CardSearchFilters() {
     setInStock(sp.get("stock") === "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp]);
-
-  const canApply = useMemo(() => {
-    return true; // sempre pode aplicar, mesmo vazio
-  }, []);
 
   function applyFilters() {
     const params = new URLSearchParams(sp.toString());
@@ -148,21 +139,18 @@ export function CardSearchFilters() {
     if (cardType) params.set("type", cardType);
     else params.delete("type");
 
-    // placeholders
     if (condition) params.set("cond", condition);
     else params.delete("cond");
 
     if (inStock) params.set("stock", "1");
     else params.delete("stock");
 
-    // sempre volta pra página 1 ao aplicar filtro
     params.set("page", "1");
 
     router.push(`${pathname}?${params.toString()}`);
   }
 
   function clearFilters() {
-    // limpa tudo (mantém só page=1 e pageSize se existir)
     const params = new URLSearchParams();
     params.set("page", "1");
 
@@ -173,27 +161,28 @@ export function CardSearchFilters() {
   }
 
   function setParam(key: string, value?: string | null) {
-    const sp = new URLSearchParams(searchParams?.toString() || "");
-    if (!value) sp.delete(key);
-    else sp.set(key, value);
-    // ✅ sempre volta pra página 1 quando muda filtro
-    sp.set("page", "1");
-    router.replace(`${pathname}?${sp.toString()}`);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+
+    if (!value) params.delete(key);
+    else params.set(key, value);
+
+    params.set("page", "1");
+
+    router.replace(`${pathname}?${params.toString()}`);
   }
 
   return (
-    <div className="sticky top-24 rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur">
+    <div className="rounded-xl border border-white/10 bg-black/60 p-3 backdrop-blur sm:p-4 md:sticky md:top-36">
       <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-white/70">
         Filtros
       </h2>
 
-      {metaError && (
+      {metaError ? (
         <div className="mb-4 rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-rose-200">
           {metaError}
         </div>
-      )}
+      ) : null}
 
-      {/* Nome */}
       <div className="mb-4">
         <label className={labelClass}>Nome da carta</label>
         <input
@@ -205,7 +194,6 @@ export function CardSearchFilters() {
         />
       </div>
 
-      {/* Set */}
       <div className="mb-4">
         <label className={labelClass}>Set</label>
         <select
@@ -224,25 +212,20 @@ export function CardSearchFilters() {
         </select>
       </div>
 
-      {/* Tipo */}
       <div className="mb-4">
-        <label className="mb-1 block text-xs text-white/60">Tipo</label>
-
+        <label className={labelClass}>Tipo</label>
         <select
           value={searchParams.get("type") ?? ""}
           onChange={(e) => {
             const params = new URLSearchParams(searchParams.toString());
 
-            if (e.target.value) {
-              params.set("type", e.target.value);
-            } else {
-              params.delete("type");
-            }
+            if (e.target.value) params.set("type", e.target.value);
+            else params.delete("type");
 
             params.set("page", "1");
             router.push(`${pathname}?${params.toString()}`);
           }}
-          className="w-full rounded-md border border-white/10 bg-black px-3 py-2 text-sm text-white"
+          className={selectClass}
         >
           <option value="">Todos</option>
 
@@ -254,27 +237,23 @@ export function CardSearchFilters() {
         </select>
       </div>
 
-      {/* Raridade */}
       <div className="mb-4">
-        <label className="mb-1 block text-xs text-white/60">Raridade</label>
-
+        <label className={labelClass}>Raridade</label>
         <select
           value={searchParams.get("rarity") ?? ""}
           onChange={(e) => {
             const params = new URLSearchParams(searchParams.toString());
 
-            if (e.target.value) {
-              params.set("rarity", e.target.value);
-            } else {
-              params.delete("rarity");
-            }
+            if (e.target.value) params.set("rarity", e.target.value);
+            else params.delete("rarity");
 
             params.set("page", "1");
             router.push(`${pathname}?${params.toString()}`);
           }}
-          className="w-full rounded-md border border-white/10 bg-black px-3 py-2 text-sm text-white"
+          className={selectClass}
         >
           <option value="">Todas</option>
+
           {RARITIES.map((r) => (
             <option key={r.value} value={r.value}>
               {r.label}
@@ -283,11 +262,10 @@ export function CardSearchFilters() {
         </select>
       </div>
 
-      {/* Aspectos */}
       <div className="mb-4">
         <label className="mb-2 block text-xs text-white/60">Aspectos</label>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-6 gap-2 md:flex md:flex-wrap">
           {ASPECTS.map((aspect) => {
             const selected = aspects.includes(aspect.key);
 
@@ -298,7 +276,7 @@ export function CardSearchFilters() {
                 title={aspect.label}
                 onClick={() => toggleAspect(aspect.key)}
                 className={[
-                  "flex h-10 w-10 items-center justify-center rounded-md border transition",
+                  "flex h-10 w-full items-center justify-center rounded-md border transition md:w-10",
                   selected
                     ? "border-orange-400 bg-orange-400/15"
                     : "border-white/10 bg-black/40 hover:border-white/30 hover:bg-white/5",
@@ -315,19 +293,20 @@ export function CardSearchFilters() {
         </div>
       </div>
 
-      {/* Condição (placeholder) */}
       <div className="mb-4">
         <label className="mb-2 block text-xs text-white/60">Condição</label>
-        <div className="flex flex-wrap gap-2">
+
+        <div className="grid grid-cols-4 gap-2 md:flex md:flex-wrap">
           {["NM", "EX", "VG", "G"].map((c) => {
             const selected = condition === c;
+
             return (
               <button
                 key={c}
                 type="button"
                 onClick={() => setCondition((prev) => (prev === c ? "" : c))}
                 className={[
-                  "rounded-md border px-3 py-1 text-xs transition",
+                  "rounded-md border px-3 py-2 text-xs transition md:py-1",
                   selected
                     ? "border-orange-400/60 bg-orange-500/15 text-white"
                     : "border-white/10 text-white/70 hover:border-white/30",
@@ -337,33 +316,30 @@ export function CardSearchFilters() {
               </button>
             );
           })}
-        </div>        
+        </div>
       </div>
 
-      {/* Em estoque */}
-      <div className="mb-4 flex items-center gap-2">
+      <label className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-3">
         <input
           type="checkbox"
           checked={inStock}
           onChange={(e) => {
             const checked = e.target.checked;
+
             setInStock(checked);
-            setParam("stock", checked ? "1" : null); // ✅ envia stock=1
+            setParam("stock", checked ? "1" : null);
           }}
         />
-        <span className="text-xs text-white/70">Somente em estoque</span>
-      </div>      
 
-      <div className="mt-6 flex gap-2">
+        <span className="text-xs text-white/70">Somente em estoque</span>
+      </label>
+
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row">
         <button type="button" className={secondaryBtn} onClick={clearFilters}>
           Limpar
         </button>
-        <button
-          type="button"
-          className={primaryBtn}
-          onClick={applyFilters}
-          disabled={!canApply}
-        >
+
+        <button type="button" className={primaryBtn} onClick={applyFilters}>
           Aplicar
         </button>
       </div>

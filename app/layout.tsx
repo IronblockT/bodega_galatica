@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </Suspense>
 
           {/* ✅ espaço do header sem precisar de div “solta” */}
-          <div className="pt-36">{children}</div>
+          <div className="pt-20 md:pt-36">{children}</div>
         </Providers>
 
         {gaId ? <GoogleAnalytics gaId={gaId} /> : null}
