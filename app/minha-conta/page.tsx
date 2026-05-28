@@ -160,6 +160,9 @@ export default function MinhaContaPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
+  const [missingAddressNotice, setMissingAddressNotice] = useState(false);
+  const [checkoutReturnNext, setCheckoutReturnNext] = useState<string | null>(null);
+
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [address, setAddress] = useState<AddressRow | null>(null);
 
@@ -180,6 +183,19 @@ export default function MinhaContaPage() {
   const email = useMemo(() => user?.email ?? null, [user]);
 
   const [storeCredit, setStoreCredit] = useState<StoreCreditRow | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    const missingAddress = params.get("missingAddress") === "1";
+    const next = params.get("next");
+
+    setMissingAddressNotice(missingAddress);
+
+    if (next && next.startsWith("/") && !next.startsWith("//")) {
+      setCheckoutReturnNext(next);
+    }
+  }, []);
 
   // Guard: exige login
   useEffect(() => {
@@ -432,13 +448,31 @@ export default function MinhaContaPage() {
     setErrorMsg(null);
     setOkMsg(null);
 
+    const cep = address?.cep ? onlyDigits(address.cep) : '';
+    const street = address?.street?.trim() || '';
+    const number = address?.number?.trim() || '';
+
+    const missingRequiredFields: string[] = [];
+
+    if (!cep) missingRequiredFields.push('CEP');
+    if (!street) missingRequiredFields.push('Rua');
+    if (!number) missingRequiredFields.push('Número');
+
+    if (missingRequiredFields.length > 0) {
+      setSavingAddress(false);
+      setErrorMsg(
+        `Preencha os campos obrigatórios do endereço: ${missingRequiredFields.join(', ')}.`
+      );
+      return;
+    }
+
     const payload = {
       user_id: user.id,
       label: 'Principal',
       is_default: true,
-      cep: address?.cep ? onlyDigits(address.cep) : null,
-      street: address?.street?.trim() || null,
-      number: address?.number?.trim() || null,
+      cep,
+      street,
+      number,
       complement: address?.complement?.trim() || null,
       district: address?.district?.trim() || null,
       city: address?.city?.trim() || null,
@@ -451,6 +485,11 @@ export default function MinhaContaPage() {
 
       if (error) {
         setErrorMsg(`Não foi possível salvar o endereço: ${error.message}`);
+        return;
+      }
+
+      if (missingAddressNotice && checkoutReturnNext) {
+        router.push(checkoutReturnNext);
         return;
       }
 
@@ -472,6 +511,12 @@ export default function MinhaContaPage() {
     }
 
     setAddress(created);
+
+    if (missingAddressNotice && checkoutReturnNext) {
+      router.push(checkoutReturnNext);
+      return;
+    }
+
     setOkMsg('Endereço salvo com sucesso.');
   }
 
@@ -508,8 +553,14 @@ export default function MinhaContaPage() {
 
           {/* Envelope dark */}
           <div className="rounded-2xl border border-white/10 bg-[#0B0C10] p-6 md:p-8">
-            {(errorMsg || okMsg) && (
+            {(errorMsg || okMsg || missingAddressNotice) && (
               <div className="mb-6 space-y-2">
+                {missingAddressNotice && (
+                  <div className="rounded-xl border border-orange-400/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-100 backdrop-blur">
+                    Cadastre seu endereço de entrega para continuar sua compra. Depois de salvar,
+                    você será redirecionado de volta para o checkout.
+                  </div>
+                )}
                 {errorMsg && (
                   <div className="rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-sm text-rose-200 backdrop-blur">
                     {errorMsg}

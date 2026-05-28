@@ -312,6 +312,15 @@ export default function CheckoutPage() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
+        if (json?.code === "MISSING_SHIPPING_ADDRESS") {
+          setCheckoutError(
+            json?.error ?? "Cadastre seu endereço de entrega antes de finalizar a compra."
+          );
+
+          router.push(json?.redirect_to ?? "/minha-conta?next=/checkout&missingAddress=1");
+          return;
+        }
+
         throw new Error(json?.error ?? "Falha ao iniciar pagamento");
       }
 

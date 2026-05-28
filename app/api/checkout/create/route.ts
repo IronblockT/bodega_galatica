@@ -70,6 +70,7 @@ const buildInFilter = (values: string[]) => {
 const safeJson = async <T = unknown>(res: Response) => {
   const txt = await res.text().catch(() => "");
   if (!txt || !txt.trim()) return { ok: true, data: null as T | null, raw: txt };
+
   try {
     return { ok: true, data: JSON.parse(txt) as T, raw: txt };
   } catch {
@@ -79,11 +80,13 @@ const safeJson = async <T = unknown>(res: Response) => {
 
 const mustJson = async <T = unknown>(res: Response, label: string) => {
   const parsed = await safeJson<T>(res);
+
   if (!parsed.ok) {
     throw new Error(
       `${label}: resposta não é JSON. HTTP ${res.status}. Body: ${parsed.raw.slice(0, 500)}`
     );
   }
+
   return parsed.data;
 };
 
@@ -158,6 +161,96 @@ export async function POST(req: Request) {
       });
     };
 
+    const addressRes = await sb(
+      `addresses?select=id,user_id,label,is_default,cep,street,number,complement,district,city,state,created_at&user_id=eq.${encodeURIComponent(
+        body.user_id
+      )}&order=is_default.desc,created_at.desc&limit=10`,
+      { method: "GET" }
+    );
+
+    const addressRows = (await addressRes.json()) as Array<{
+      id?: string | null;
+      user_id?: string | null;
+      label?: string | null;
+      is_default?: boolean | null;
+      cep?: string | null;
+      street?: string | null;
+      number?: string | null;
+      complement?: string | null;
+      district?: string | null;
+      city?: string | null;
+      state?: string | null;
+      created_at?: string | null;
+    }>;
+
+    const hasText = (value: unknown) => {
+      return typeof value === "string" && value.trim().length > 0;
+    };
+
+    const isValidShippingAddress = (addr: (typeof addressRows)[number] | null | undefined) => {
+      return !!addr?.id && hasText(addr.cep) && hasText(addr.street) && hasText(addr.number);
+    };
+
+    const shippingAddress =
+      addressRows.find((addr) => addr.is_default && isValidShippingAddress(addr)) ??
+      addressRows.find((addr) => isValidShippingAddress(addr)) ??
+      null;
+
+    const missingAddressFields: string[] = [];
+
+    if (!shippingAddress?.id) {
+      missingAddressFields.push("address");
+    } else {
+      if (!hasText(shippingAddress.cep)) missingAddressFields.push("cep");
+      if (!hasText(shippingAddress.street)) missingAddressFields.push("street");
+      if (!hasText(shippingAddress.number)) missingAddressFields.push("number");
+    }
+
+    console.log("[checkout/address-validation]", {
+      user_id: body.user_id,
+      found_addresses: addressRows.length,
+      selected_address_id: shippingAddress?.id ?? null,
+      selected_is_default: shippingAddress?.is_default ?? null,
+      missing_fields: missingAddressFields,
+      addresses_debug: addressRows.map((addr) => ({
+        id: addr.id,
+        is_default: addr.is_default,
+        cep: addr.cep,
+        street: addr.street,
+        number: addr.number,
+        city: addr.city,
+        state: addr.state,
+        created_at: addr.created_at,
+      })),
+    });
+
+    if (missingAddressFields.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "MISSING_SHIPPING_ADDRESS",
+          error: "Cadastre seu endereço de entrega antes de finalizar a compra.",
+          missing_fields: missingAddressFields,
+          address_debug: {
+            found_addresses: addressRows.length,
+            selected_address: shippingAddress,
+            addresses: addressRows.map((addr) => ({
+              id: addr.id,
+              is_default: addr.is_default,
+              cep: addr.cep,
+              street: addr.street,
+              number: addr.number,
+              city: addr.city,
+              state: addr.state,
+              created_at: addr.created_at,
+            })),
+          },
+          redirect_to: "/minha-conta?next=/checkout&missingAddress=1",
+        },
+        { status: 409 }
+      );
+    }
+
     const idem = body.idempotency_key?.trim();
 
     if (idem) {
@@ -167,7 +260,12 @@ export async function POST(req: Request) {
         )}&idempotency_key=eq.${encodeURIComponent(idem)}&limit=1`,
         { method: "GET" }
       );
-      const existingOrders = (await existingOrderRes.json()) as Array<{ id?: string; status?: string }>;
+
+      const existingOrders = (await existingOrderRes.json()) as Array<{
+        id?: string;
+        status?: string;
+      }>;
+
       const existingOrder = existingOrders?.[0];
 
       if (existingOrder?.id) {
@@ -175,10 +273,12 @@ export async function POST(req: Request) {
           `payments?select=provider_preference_id,provider_payload&order_id=eq.${existingOrder.id}&provider=eq.mercadopago&limit=1`,
           { method: "GET" }
         );
+
         const payRows = (await existingPayRes.json()) as Array<{
           provider_preference_id?: string | null;
           provider_payload?: { init_point?: string | null } | null;
         }>;
+
         const pay = payRows?.[0];
 
         return NextResponse.json({
@@ -204,7 +304,6 @@ export async function POST(req: Request) {
     const requestedStoreCredit = asNumber(body.store_credit_applied_brl ?? 0);
     const requestedFinalTotal = asNumber(body.final_total_brl ?? 0);
     const requestedCouponCode = String(body.coupon_code ?? "").trim().toUpperCase() || null;
-    const storeCreditApplied = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
 
     if (Number.isFinite(requestedShipping) && requestedShipping < 0) {
       return NextResponse.json({ error: "shipping_brl inválido" }, { status: 400 });
@@ -238,6 +337,7 @@ export async function POST(req: Request) {
         discount_brl?: number | string | null;
         total_brl?: number | string | null;
       }>;
+
       const existingOrder = orderRows?.[0];
 
       if (!existingOrder?.id) {
@@ -247,6 +347,7 @@ export async function POST(req: Request) {
       const okStatus = ["reserved", "awaiting_payment", "draft"].includes(
         String(existingOrder.status ?? "")
       );
+
       if (!okStatus) {
         return NextResponse.json(
           { error: `Order não está apta para checkout (status=${existingOrder.status})` },
@@ -260,10 +361,12 @@ export async function POST(req: Request) {
         )}&provider=eq.mercadopago&limit=1`,
         { method: "GET" }
       );
+
       const existingPayRows = (await existingPayRes.json()) as Array<{
         provider_preference_id?: string | null;
         provider_payload?: { init_point?: string | null } | null;
       }>;
+
       const existingPay = existingPayRows?.[0];
 
       if (existingPay?.provider_preference_id && existingPay?.provider_payload?.init_point) {
@@ -318,17 +421,12 @@ export async function POST(req: Request) {
       enriched = orderItems.map((x) => {
         const snapshot = x.item_snapshot ?? {};
         const itemType =
-          x.item_type === "product" || snapshot.item_type === "product"
-            ? "product"
-            : "card";
+          x.item_type === "product" || snapshot.item_type === "product" ? "product" : "card";
 
         const fallbackTitle =
-          itemType === "product"
-            ? x.product_slug ?? x.product_id ?? "Produto"
-            : x.sku_key ?? "Carta";
+          itemType === "product" ? x.product_slug ?? x.product_id ?? "Produto" : x.sku_key ?? "Carta";
 
         const title = snapshot.title ?? fallbackTitle;
-
         const unitPrice = asNumber(x.unit_price_brl ?? snapshot.unit_price_brl ?? 0);
         const qty = Number(x.qty ?? 0);
         const lineTotal = asNumber(x.line_total_brl ?? unitPrice * qty);
@@ -365,10 +463,16 @@ export async function POST(req: Request) {
 
       subtotal = enriched.reduce((acc, x) => acc + x.line_total_brl, 0);
 
-      shipping = Number.isFinite(requestedShipping) ? requestedShipping : asNumber(existingOrder.shipping_brl ?? 0);
+      shipping = Number.isFinite(requestedShipping)
+        ? requestedShipping
+        : asNumber(existingOrder.shipping_brl ?? 0);
+
       if (!Number.isFinite(shipping)) shipping = 0;
 
-      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount) ? requestedCouponDiscount : 0;
+      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount)
+        ? requestedCouponDiscount
+        : 0;
+
       const storeCreditSafe = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
 
       discount = couponDiscountSafe + storeCreditSafe;
@@ -394,24 +498,26 @@ export async function POST(req: Request) {
           notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
         }),
       });
-
     } else {
       const inputItems = body.items ?? [];
       const skus = inputItems.map((i) => i.sku_key);
       const skuIn = buildInFilter(skus);
 
       let invRows: InvRow[] = [];
+
       try {
         const invRes = await sb(
           `swu_inventory_ui?select=sku_key,card_uid,finish,condition,promo_type&sku_key=in.${skuIn}`,
           { method: "GET" }
         );
+
         invRows = (await invRes.json()) as InvRow[];
       } catch {
         const invRes = await sb(
           `swu_inventory?select=sku_key,card_uid,finish,condition,promo_type&sku_key=in.${skuIn}`,
           { method: "GET" }
         );
+
         invRows = (await invRes.json()) as InvRow[];
       }
 
@@ -424,6 +530,7 @@ export async function POST(req: Request) {
 
       const invBySku = new Map(invRows.map((r) => [r.sku_key, r]));
       const missing = skus.filter((s) => !invBySku.has(s));
+
       if (missing.length) {
         return NextResponse.json(
           { error: "SKU(s) inválido(s)", detail: { missing } },
@@ -440,20 +547,28 @@ export async function POST(req: Request) {
       );
 
       let cards: CardRow[] = [];
+
       if (cardUids.length) {
         const cardUidIn = buildInFilter(cardUids);
+
         try {
           const cardsRes = await sb(
             `swu_cards_market_ui?select=card_uid,title,min_price_brl_nm&card_uid=in.${cardUidIn}`,
             { method: "GET" }
           );
+
           cards = (await cardsRes.json()) as CardRow[];
         } catch {
           const cardsRes = await sb(
             `swu_cards?select=card_uid,title&card_uid=in.${cardUidIn}`,
             { method: "GET" }
           );
-          const raw = (await cardsRes.json()) as Array<{ card_uid: string; title?: string | null }>;
+
+          const raw = (await cardsRes.json()) as Array<{
+            card_uid: string;
+            title?: string | null;
+          }>;
+
           cards = raw.map((c) => ({
             card_uid: c.card_uid,
             title: c.title ?? null,
@@ -470,6 +585,7 @@ export async function POST(req: Request) {
         const title = card?.title ?? it.sku_key;
 
         const unitPrice = asNumber(card?.min_price_brl_nm ?? 0);
+
         if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
           throw new Error(
             `Preço inválido para sku_key=${it.sku_key} (unitPrice=${String(unitPrice)})`
@@ -501,10 +617,12 @@ export async function POST(req: Request) {
       });
 
       subtotal = enriched.reduce((acc, x) => acc + x.line_total_brl, 0);
-
       shipping = Number.isFinite(requestedShipping) ? requestedShipping : 0;
 
-      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount) ? requestedCouponDiscount : 0;
+      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount)
+        ? requestedCouponDiscount
+        : 0;
+
       const storeCreditSafe = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
 
       discount = couponDiscountSafe + storeCreditSafe;
@@ -537,7 +655,9 @@ export async function POST(req: Request) {
 
       const orderData = await mustJson<Array<{ id?: string }>>(orderRes, "orders insert");
       const order = orderData?.[0];
+
       if (!order?.id) throw new Error("orders insert: não retornou id");
+
       orderId = order.id;
 
       await sb("order_items", {
@@ -573,6 +693,7 @@ export async function POST(req: Request) {
           method: "PATCH",
           body: JSON.stringify({ status: "cancelled" }),
         });
+
         return NextResponse.json(
           { error: "Falha ao reservar estoque", detail: reservePayload },
           { status: 409 }
@@ -589,6 +710,7 @@ export async function POST(req: Request) {
           method: "PATCH",
           body: JSON.stringify({ status: "cancelled" }),
         });
+
         return NextResponse.json(
           { error: "Sem estoque para um ou mais itens", detail: reserveParsed.data },
           { status: 409 }
@@ -606,9 +728,7 @@ export async function POST(req: Request) {
     }
 
     if (total <= 0) {
-      const storeCreditApplied = Number.isFinite(requestedStoreCredit)
-        ? requestedStoreCredit
-        : 0;
+      const storeCreditApplied = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
 
       if (storeCreditApplied > 0) {
         const creditRes = await sb(
