@@ -22,6 +22,19 @@ function getTypeLabel(v: any): string {
   return "—";
 }
 
+function formatMoneyBRL(value: number | string | null | undefined) {
+  const n = typeof value === "string" ? Number(value) : value;
+
+  if (!Number.isFinite(n)) {
+    return "—";
+  }
+
+  return Number(n).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
 type BuylistQuote = {
   sku_key: string;
   card_uid: string;
@@ -56,14 +69,14 @@ type BuylistQuote = {
 
 type QuoteResponse =
   | {
-    ok: true;
-    quote: BuylistQuote;
-  }
+      ok: true;
+      quote: BuylistQuote;
+    }
   | {
-    ok: false;
-    error: string;
-    detail?: unknown;
-  };
+      ok: false;
+      error: string;
+      detail?: unknown;
+    };
 
 export function BuylistResultRow({ card }: any) {
   const router = useRouter();
@@ -98,6 +111,7 @@ export function BuylistResultRow({ card }: any) {
     if (quote?.max_qty_per_sku && quote.max_qty_per_sku > 0) {
       return quote.max_qty_per_sku;
     }
+
     return 8;
   }, [quote?.max_qty_per_sku]);
 
@@ -223,114 +237,124 @@ export function BuylistResultRow({ card }: any) {
   }
 
   return (
-    <div className="flex gap-4 rounded-xl border border-white/10 bg-black/60 p-4 backdrop-blur">
-      <div className="flex-shrink-0">
-        <Link href={detailHref} className="block">
-          <div className="relative flex h-48 w-36 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 md:h-56 md:w-40">
-            {card.image ? (
-              <img
-                src={card.image}
-                alt={card.name}
-                className={[
-                  "max-h-full max-w-full",
-                  isHorizontal ? "object-contain p-2" : "object-cover",
-                ].join(" ")}
-                loading="lazy"
-              />
+    <div className="rounded-2xl border border-white/10 bg-black/60 p-4 backdrop-blur">
+      <div className="flex flex-col gap-5 md:flex-row md:gap-4">
+        <div className="flex justify-center md:block md:flex-shrink-0">
+          <Link href={detailHref} className="block">
+            <div className="relative flex h-72 w-full max-w-[250px] items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 md:h-56 md:w-40">
+              {card.image ? (
+                <img
+                  src={card.image}
+                  alt={card.name}
+                  className={[
+                    "max-h-full max-w-full",
+                    isHorizontal ? "object-contain p-2" : "object-cover",
+                  ].join(" ")}
+                  loading="lazy"
+                />
+              ) : null}
+            </div>
+          </Link>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col justify-between">
+          <div>
+            <h3 className="text-xl font-semibold leading-tight text-white md:text-base">
+              <Link href={detailHref} className="hover:underline">
+                {card.name}
+              </Link>
+            </h3>
+
+            <p className="mt-2 text-sm text-white/60 md:text-xs">
+              {typeLabel} • {card.set} • {card.finish} • {promoTypeLabel}
+            </p>
+
+            {card.rules_text ? (
+              <p className="mt-4 line-clamp-4 text-sm leading-7 text-white/70 md:mt-2 md:line-clamp-2">
+                {card.rules_text}
+              </p>
             ) : null}
           </div>
-        </Link>
-      </div>
 
-      <div className="flex flex-1 flex-col justify-between">
-        <div>
-          <h3 className="font-semibold text-white">
-            <Link href={detailHref} className="hover:underline">
-              {card.name}
-            </Link>
-          </h3>
+          <div className="mt-5 md:mt-3">
+            <ConditionSelector
+              variants={card.variants}
+              value={condition}
+              onChange={setCondition}
+            />
+          </div>
+        </div>
 
-          <p className="text-xs text-white/60">
-            {typeLabel} • {card.set} • {card.finish} • {promoTypeLabel}
-          </p>
+        <div className="w-full border-t border-white/10 pt-5 text-left md:w-64 md:border-t-0 md:pt-0 md:text-right">
+          <div className="text-xs uppercase tracking-wide text-white/45">
+            Valor de recompra
+          </div>
 
-          {card.rules_text ? (
-            <p className="mt-2 line-clamp-2 text-sm text-white/70">
-              {card.rules_text}
+          <div className="mt-2 text-3xl font-semibold text-white md:text-2xl">
+            {loadingQuote
+              ? "..."
+              : quote
+                ? formatMoneyBRL(quote.buy_price_total)
+                : "—"}
+          </div>
+
+          <div className="mt-3 flex justify-start md:justify-end">
+            {statusBadge}
+          </div>
+
+          {quote ? (
+            <p className="mt-3 text-sm leading-6 text-white/60 md:text-xs">
+              {!quote.is_buylist_available
+                ? "No momento não estamos comprando esta carta."
+                : quote.allowed_payout_type === "store_credit"
+                  ? "No momento esta oferta segue apenas com crédito na loja."
+                  : "Você pode seguir com esta oferta."}
             </p>
           ) : null}
+
+          {quote ? (
+            <p className="mt-2 text-sm leading-6 text-white/60 md:text-xs">
+              {quote.max_qty_per_sku > 0
+                ? `Limite disponível desta carta: até ${quote.max_qty_per_sku} unidade${quote.max_qty_per_sku === 1 ? "" : "s"}`
+                : "Não há mais disponibilidade desta carta para recompra neste momento."}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm leading-6 text-white/60 md:text-xs">
+              Calculando disponibilidade...
+            </p>
+          )}
+
+          <div className="mt-4 flex justify-center md:justify-end">
+            <QuantitySelector max={quantityMax} value={qty} onChange={setQty} />
+          </div>
+
+          {quote?.manual_review_required ? (
+            <p className="mt-3 text-center text-sm leading-6 text-amber-200 md:text-right md:text-xs">
+              Esta carta pode exigir revisão manual.
+            </p>
+          ) : null}
+
+          {quoteError ? (
+            <p className="mt-3 text-sm leading-6 text-rose-200 md:text-xs">
+              {quoteError}
+            </p>
+          ) : null}
+
+          <button
+            type="button"
+            disabled={disabledAction}
+            className={[
+              "mt-5 w-full rounded-full px-5 py-3 text-sm font-semibold transition-colors md:mt-3 md:px-4 md:py-2 md:text-xs",
+              "text-[#0B0C10]",
+              "bg-gradient-to-r from-orange-400 to-orange-500",
+              "hover:from-orange-500 hover:to-orange-600",
+              "disabled:opacity-40",
+            ].join(" ")}
+            onClick={handleSellRequest}
+          >
+            Vender para a loja
+          </button>
         </div>
-
-        <ConditionSelector
-          variants={card.variants}
-          value={condition}
-          onChange={setCondition}
-        />
-      </div>
-
-      <div className="w-64 text-right">
-        <div className="text-xs uppercase tracking-wide text-white/45">
-          Valor de recompra
-        </div>
-
-        <div className="mt-1 text-2xl font-semibold text-white">
-          {loadingQuote
-            ? "..."
-            : quote
-              ? `R$ ${Number(quote.buy_price_total || 0).toFixed(2)}`
-              : "—"}
-        </div>
-
-        <div className="mt-2 flex justify-end">{statusBadge}</div>
-
-        {quote ? (
-          <p className="mt-2 text-xs text-white/60">
-            {!quote.is_buylist_available
-              ? "No momento não estamos comprando esta carta."
-              : quote.allowed_payout_type === "store_credit"
-                ? "No momento esta oferta segue apenas com crédito na loja."
-                : "Você pode seguir com esta oferta."}
-          </p>
-        ) : null}
-
-        {quote ? (
-          <p className="mt-2 text-xs text-white/60">
-            {quote.max_qty_per_sku > 0
-              ? `Limite disponível desta carta: até ${quote.max_qty_per_sku} unidade${quote.max_qty_per_sku === 1 ? "" : "s"}`
-              : "Não há mais disponibilidade desta carta para recompra neste momento."}
-          </p>
-        ) : (
-          <p className="mt-2 text-xs text-white/60">
-            Calculando disponibilidade...
-          </p>
-        )}
-
-        <QuantitySelector max={quantityMax} value={qty} onChange={setQty} />
-
-        {quote?.manual_review_required ? (
-          <p className="mt-2 text-xs text-amber-200">
-            Esta carta pode exigir revisão manual.
-          </p>
-        ) : null}
-
-        {quoteError ? (
-          <p className="mt-2 text-xs text-rose-200">{quoteError}</p>
-        ) : null}
-
-        <button
-          type="button"
-          disabled={disabledAction}
-          className={[
-            "mt-3 w-full rounded-full px-4 py-2 text-xs font-semibold transition-colors",
-            "text-[#0B0C10]",
-            "bg-gradient-to-r from-orange-400 to-orange-500",
-            "hover:from-orange-500 hover:to-orange-600",
-            "disabled:opacity-40",
-          ].join(" ")}
-          onClick={handleSellRequest}
-        >
-          Vender para a loja
-        </button>
       </div>
     </div>
   );
