@@ -15,8 +15,9 @@ function toPgArrayLiteral(arr: string[]) {
   return `{${escaped.join(",")}}`;
 }
 
-const CONDITION_ORDER = ["NM", "LP", "MP", "HP", "DMG"] as const;
+const CONDITION_ORDER = ["NM", "EX", "VG", "G", "LP", "MP", "HP", "DMG"] as const;
 const BATCH_SIZE = 200;
+const SUPABASE_PAGE_SIZE = 1000;
 
 function pickRecommendedCondition(variants: Record<string, { stock?: number }>) {
   for (const c of CONDITION_ORDER) {
@@ -35,6 +36,35 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
+async function fetchAllRows(queryBuilder: any) {
+  const all: any[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+
+    const { data, error } = await queryBuilder.range(from, to);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    all.push(...data);
+
+    if (data.length < SUPABASE_PAGE_SIZE) {
+      break;
+    }
+
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return all;
+}
+
 async function batchedInQuery(
   supabase: any,
   table: string,
@@ -50,12 +80,8 @@ async function batchedInQuery(
     let query = supabase.from(table).select(selectClause).in(column, chunk);
     if (extra) query = extra(query);
 
-    const { data, error } = await query;
-    if (error) {
-      throw new Error(`${table}: ${error.message}`);
-    }
-
-    if (data?.length) all.push(...data);
+    const rows = await fetchAllRows(query);
+    all.push(...rows);
   }
 
   return all;
@@ -89,7 +115,7 @@ export async function GET(req: Request) {
     const traits = toArrayParam(searchParams.get("traits"));
     const keywords = toArrayParam(searchParams.get("keywords"));
 
-    const stock = searchParams.get("stock");
+    const stock = searchParams.get("stock") ?? "1";
 
     const page = Math.max(parseInt(searchParams.get("page") ?? "1", 10), 1);
     const pageSize = 20;
@@ -100,17 +126,25 @@ export async function GET(req: Request) {
     let stockCardUids: string[] | null = null;
 
     if (stock === "1") {
-      const { data: invRows, error: invErr } = await supabase
-        .from("swu_inventory_ui")
-        .select("sku_key, qty_available")
-        .gt("qty_available", 0);
+      const rawInvRows = await fetchAllRows(
+        supabase
+          .from("swu_inventory")
+          .select("sku_key, qty_on_hand, qty_reserved")
+          .gt("qty_on_hand", 0)
+      );
 
-      if (invErr) {
-        return NextResponse.json(
-          { ok: false, error: invErr.message },
-          { status: 500 }
-        );
-      }
+      const invRows = (rawInvRows ?? [])
+        .map((r: any) => {
+          const qtyOnHand = Number(r.qty_on_hand ?? 0);
+          const qtyReserved = Number(r.qty_reserved ?? 0);
+          const qtyAvailable = Math.max(qtyOnHand - qtyReserved, 0);
+
+          return {
+            sku_key: r.sku_key,
+            qty_available: qtyAvailable,
+          };
+        })
+        .filter((r: any) => r.sku_key && r.qty_available > 0);
 
       const skuKeys = Array.from(
         new Set((invRows ?? []).map((r: any) => r.sku_key).filter(Boolean))
@@ -187,11 +221,8 @@ export async function GET(req: Request) {
     if (rarity) cardsQ = cardsQ.eq("rarity_label", rarity);
     if (type) cardsQ = cardsQ.eq("card_type_label", type);
 
-    if (stockCardUids) {
-      // também em lotes seria possível, mas normalmente esse conjunto já vem reduzido
-      // se crescer no futuro, podemos migrar esse filtro para outra estratégia
-      cardsQ = cardsQ.in("card_uid", stockCardUids);
-    }
+    const shouldBatchCardsByStock =
+      stock === "1" && stockCardUids && stockCardUids.length > 0;
 
     if (aspects.length) {
       cardsQ = cardsQ.contains("aspects_labels", toPgArrayLiteral(aspects) as any);
@@ -212,13 +243,64 @@ export async function GET(req: Request) {
       .order("expansion_code", { ascending: true })
       .order("card_number", { ascending: true });
 
-    const { data: cards, error: cardsErr } = await cardsQ;
+    let cards: any[] = [];
 
-    if (cardsErr) {
-      return NextResponse.json(
-        { ok: false, error: cardsErr.message },
-        { status: 500 }
+    if (shouldBatchCardsByStock) {
+      cards = await batchedInQuery(
+        supabase,
+        "swu_cards_ui",
+        `
+      card_uid,
+      expansion_code,
+      title,
+      subtitle,
+      card_number,
+      card_count,
+      artist,
+      rarity_label,
+      card_type_label,
+      aspects_labels,
+      traits_labels,
+      keywords_labels,
+      cost,
+      power,
+      hp,
+      rules_text,
+      image_front_url,
+      image_back_url,
+      image_thumb_url
+    `,
+        "card_uid",
+        stockCardUids ?? [],
+        (query) => {
+          if (q) {
+            const qEsc = q.replace(/,/g, "\\,");
+            query = query.or(`title.ilike.%${qEsc}%,subtitle.ilike.%${qEsc}%`);
+          }
+
+          if (set) query = query.eq("expansion_code", set);
+          if (rarity) query = query.eq("rarity_label", rarity);
+          if (type) query = query.eq("card_type_label", type);
+
+          if (aspects.length) {
+            query = query.contains("aspects_labels", toPgArrayLiteral(aspects) as any);
+          }
+
+          if (traits.length) {
+            query = query.contains("traits_labels", toPgArrayLiteral(traits) as any);
+          }
+
+          if (keywords.length) {
+            query = query.contains("keywords_labels", toPgArrayLiteral(keywords) as any);
+          }
+
+          return query
+            .order("expansion_code", { ascending: true })
+            .order("card_number", { ascending: true });
+        }
       );
+    } else {
+      cards = await fetchAllRows(cardsQ);
     }
 
     const cardUids = (cards ?? []).map((c: any) => c.card_uid).filter(Boolean);
@@ -266,13 +348,24 @@ export async function GET(req: Request) {
       skuKeys
     );
 
-    const inv = await batchedInQuery(
+    const rawInv = await batchedInQuery(
       supabase,
-      "swu_inventory_ui",
-      "sku_key, qty_available",
+      "swu_inventory",
+      "sku_key, qty_on_hand, qty_reserved",
       "sku_key",
       skuKeys
     );
+
+    const inv = (rawInv ?? []).map((r: any) => {
+      const qtyOnHand = Number(r.qty_on_hand ?? 0);
+      const qtyReserved = Number(r.qty_reserved ?? 0);
+      const qtyAvailable = Math.max(qtyOnHand - qtyReserved, 0);
+
+      return {
+        sku_key: r.sku_key,
+        qty_available: qtyAvailable,
+      };
+    });
 
     const priceBySku = new Map(
       (prices ?? []).map((p: any) => [p.sku_key, Number(p.price_brl)])

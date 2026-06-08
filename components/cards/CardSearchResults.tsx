@@ -88,7 +88,7 @@ export function CardSearchResults() {
   const traits = sp.get("traits") ?? "";
   const keywords = sp.get("keywords") ?? "";
 
-  const stock = sp.get("stock") ?? "";
+  const stock = sp.get("stock") ?? "1";
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();

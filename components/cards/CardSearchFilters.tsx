@@ -67,7 +67,7 @@ export function CardSearchFilters() {
   const [setCode, setSetCode] = useState(sp.get("set") ?? "");
   const [cardType, setCardType] = useState(sp.get("type") ?? "");
   const [condition, setCondition] = useState(sp.get("cond") ?? "");
-  const [inStock, setInStock] = useState(sp.get("stock") === "1");
+  const [inStock, setInStock] = useState(sp.get("stock") !== "0");
 
   const aspects = useMemo(
     () => (searchParams.get("aspects") ?? "").split(",").filter(Boolean),
@@ -123,7 +123,7 @@ export function CardSearchFilters() {
     setSetCode(sp.get("set") ?? "");
     setCardType(sp.get("type") ?? "");
     setCondition(sp.get("cond") ?? "");
-    setInStock(sp.get("stock") === "1");
+    setInStock(sp.get("stock") !== "0");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp]);
 
@@ -143,7 +143,7 @@ export function CardSearchFilters() {
     else params.delete("cond");
 
     if (inStock) params.set("stock", "1");
-    else params.delete("stock");
+    else params.set("stock", "0");
 
     params.set("page", "1");
 
@@ -153,6 +153,7 @@ export function CardSearchFilters() {
   function clearFilters() {
     const params = new URLSearchParams();
     params.set("page", "1");
+    params.set("stock", "1");
 
     const pageSize = sp.get("pageSize");
     if (pageSize) params.set("pageSize", pageSize);
@@ -327,7 +328,7 @@ export function CardSearchFilters() {
             const checked = e.target.checked;
 
             setInStock(checked);
-            setParam("stock", checked ? "1" : null);
+            setParam("stock", checked ? "1" : "0");
           }}
         />
 
