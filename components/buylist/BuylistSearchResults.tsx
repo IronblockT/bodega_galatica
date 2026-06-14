@@ -81,6 +81,18 @@ export function BuylistSearchResults() {
   const keywords = sp.get("keywords") ?? "";
   const stock = sp.get("stock") ?? "";
 
+  const hasSearchIntent = useMemo(() => {
+    return Boolean(
+      q.trim() ||
+      setCode ||
+      type ||
+      rarity ||
+      aspects ||
+      traits ||
+      keywords
+    );
+  }, [q, setCode, type, rarity, aspects, traits, keywords]);
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -100,6 +112,16 @@ export function BuylistSearchResults() {
     let mounted = true;
 
     (async () => {
+      if (!hasSearchIntent) {
+        if (!mounted) return;
+
+        setLoading(false);
+        setErrorMsg(null);
+        setItems([]);
+        setTotal(0);
+        return;
+      }
+
       try {
         setLoading(true);
         setErrorMsg(null);
@@ -139,7 +161,7 @@ export function BuylistSearchResults() {
     return () => {
       mounted = false;
     };
-  }, [queryString]);
+  }, [queryString, hasSearchIntent]);
 
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
 
@@ -155,17 +177,21 @@ export function BuylistSearchResults() {
     <div>
       <div className="mb-4 flex flex-col gap-2 text-sm text-white/60 md:flex-row md:items-center md:justify-between">
         <span>
-          {loading ? "Carregando..." : `${total} resultado${total === 1 ? "" : "s"}`}
+          {!hasSearchIntent
+            ? "Use os filtros para buscar cartas"
+            : loading
+              ? "Carregando..."
+              : `${total} resultado${total === 1 ? "" : "s"}`}
         </span>
 
         <div className="flex items-center gap-2">
           <span className="text-xs text-white/45">
-            Página {page} de {totalPages}
+            {hasSearchIntent ? `Página ${page} de ${totalPages}` : "Nenhuma busca feita"}
           </span>
 
           <button
             className={secondaryBtn}
-            disabled={page <= 1 || loading}
+            disabled={!hasSearchIntent || page <= 1 || loading}
             onClick={() => goToPage(page - 1)}
           >
             Anterior
@@ -173,7 +199,7 @@ export function BuylistSearchResults() {
 
           <button
             className={secondaryBtn}
-            disabled={page >= totalPages || loading}
+            disabled={!hasSearchIntent || page >= totalPages || loading}
             onClick={() => goToPage(page + 1)}
           >
             Próxima
@@ -187,10 +213,28 @@ export function BuylistSearchResults() {
         </div>
       )}
 
-      {loading ? (
+      {!hasSearchIntent ? (
+        <div className="rounded-2xl border border-white/10 bg-black/40 p-6 text-white/75">
+          <div className="inline-flex items-center rounded-full border border-orange-400/25 bg-orange-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-orange-300">
+            Busque uma carta
+          </div>
+
+          <h2 className="mt-4 text-xl font-semibold text-white">
+            Veja se estamos comprando sua carta
+          </h2>
+
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">
+            Digite o nome da carta ou use os filtros para encontrar cartas por coleção,
+            tipo, raridade ou aspecto. A cotação de recompra aparecerá aqui quando você
+            fizer uma busca.
+          </p>
+        </div>
+      ) : loading ? (
         <div className="text-sm text-white/60">Buscando cartas…</div>
       ) : rows.length === 0 ? (
-        <div className="text-sm text-white/60">Nenhuma carta encontrada.</div>
+        <div className="text-sm text-white/60">
+          Nenhuma carta encontrada para os filtros selecionados.
+        </div>
       ) : (
         <div className="space-y-4">
           {rows.map((card) => (

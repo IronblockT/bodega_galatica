@@ -56,6 +56,7 @@ const RARITIES = [
 export function CardSearchFilters() {
   const router = useRouter();
   const pathname = usePathname();
+  const isBuylistPage = pathname.startsWith("/vender");
   const sp = useSearchParams();
   const searchParams = useSearchParams();
 
@@ -67,7 +68,7 @@ export function CardSearchFilters() {
   const [setCode, setSetCode] = useState(sp.get("set") ?? "");
   const [cardType, setCardType] = useState(sp.get("type") ?? "");
   const [condition, setCondition] = useState(sp.get("cond") ?? "");
-  const [inStock, setInStock] = useState(sp.get("stock") !== "0");
+  const [inStock, setInStock] = useState(sp.get("stock") === "1");
 
   const aspects = useMemo(
     () => (searchParams.get("aspects") ?? "").split(",").filter(Boolean),
@@ -123,7 +124,7 @@ export function CardSearchFilters() {
     setSetCode(sp.get("set") ?? "");
     setCardType(sp.get("type") ?? "");
     setCondition(sp.get("cond") ?? "");
-    setInStock(sp.get("stock") !== "0");
+    setInStock(sp.get("stock") === "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp]);
 
@@ -142,8 +143,13 @@ export function CardSearchFilters() {
     if (condition) params.set("cond", condition);
     else params.delete("cond");
 
-    if (inStock) params.set("stock", "1");
-    else params.set("stock", "0");
+    if (isBuylistPage) {
+      params.delete("stock");
+    } else if (inStock) {
+      params.set("stock", "1");
+    } else {
+      params.delete("stock");
+    }
 
     params.set("page", "1");
 
@@ -153,7 +159,6 @@ export function CardSearchFilters() {
   function clearFilters() {
     const params = new URLSearchParams();
     params.set("page", "1");
-    params.set("stock", "1");
 
     const pageSize = sp.get("pageSize");
     if (pageSize) params.set("pageSize", pageSize);
@@ -320,20 +325,27 @@ export function CardSearchFilters() {
         </div>
       </div>
 
-      <label className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-3">
-        <input
-          type="checkbox"
-          checked={inStock}
-          onChange={(e) => {
-            const checked = e.target.checked;
+      {!isBuylistPage ? (
+        <label className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-3">
+          <input
+            type="checkbox"
+            checked={inStock}
+            onChange={(e) => {
+              const checked = e.target.checked;
 
-            setInStock(checked);
-            setParam("stock", checked ? "1" : "0");
-          }}
-        />
+              setInStock(checked);
 
-        <span className="text-xs text-white/70">Somente em estoque</span>
-      </label>
+              if (checked) {
+                setParam("stock", "1");
+              } else {
+                setParam("stock", null);
+              }
+            }}
+          />
+
+          <span className="text-xs text-white/70">Somente em estoque</span>
+        </label>
+      ) : null}
 
       <div className="mt-6 flex flex-col gap-2 sm:flex-row">
         <button type="button" className={secondaryBtn} onClick={clearFilters}>

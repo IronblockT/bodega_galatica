@@ -53,6 +53,7 @@ export default function VenderPage() {
               <section className="col-span-12 md:col-span-9 space-y-6">
                 <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0B0C10]/95 shadow-2xl backdrop-blur">
                   <div className="sunset-line" />
+
                   <div className="px-6 py-6 md:px-8">
                     <div className="inline-flex items-center rounded-full border border-orange-400/25 bg-orange-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
                       Buylist da Bodega Galática
@@ -63,16 +64,13 @@ export default function VenderPage() {
                     </h2>
 
                     <p className="mt-3 max-w-3xl text-sm leading-7 text-white/70 md:text-base">
-                      Os valores exibidos abaixo seguem as regras atuais da nossa
-                      buylist e podem variar conforme estoque, faixa de preço e
+                      Busque suas cartas de Star Wars: Unlimited para ver quanto estamos pagando
+                      neste momento. Os valores podem variar conforme estoque, faixa de preço e
                       disponibilidade de caixa para recompra.
                     </p>
                   </div>
-                </div>
 
-                <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0B0C10]/70 backdrop-blur shadow-2xl">
-                  <div className="sunset-line" />
-                  <div className="p-4">
+                  <div className="border-t border-white/10 p-4 md:p-6">
                     <BuylistSearchResults />
                   </div>
                 </div>

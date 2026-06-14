@@ -19,11 +19,25 @@ const CONDITION_ORDER = ["NM", "EX", "VG", "G", "LP", "MP", "HP", "DMG"] as cons
 const BATCH_SIZE = 200;
 const SUPABASE_PAGE_SIZE = 1000;
 
-function pickRecommendedCondition(variants: Record<string, { stock?: number }>) {
-  for (const c of CONDITION_ORDER) {
-    const s = Number(variants?.[c]?.stock ?? 0);
-    if (s > 0) return c;
+function pickRecommendedCondition(
+  variants: Record<string, { stock?: number; price?: number }>,
+  onlyInStock: boolean
+) {
+  if (onlyInStock) {
+    for (const c of CONDITION_ORDER) {
+      const s = Number(variants?.[c]?.stock ?? 0);
+      const p = Number(variants?.[c]?.price ?? 0);
+
+      if (s > 0 && p > 0) return c;
+    }
   }
+
+  for (const c of CONDITION_ORDER) {
+    const p = Number(variants?.[c]?.price ?? 0);
+
+    if (p > 0) return c;
+  }
+
   return "NM";
 }
 
@@ -115,7 +129,8 @@ export async function GET(req: Request) {
     const traits = toArrayParam(searchParams.get("traits"));
     const keywords = toArrayParam(searchParams.get("keywords"));
 
-    const stock = searchParams.get("stock") ?? "1";
+    const stock = searchParams.get("stock") ?? "";
+    const onlyInStock = stock === "1";
 
     const page = Math.max(parseInt(searchParams.get("page") ?? "1", 10), 1);
     const pageSize = 20;
@@ -125,7 +140,7 @@ export async function GET(req: Request) {
     // -----------------------------
     let stockCardUids: string[] | null = null;
 
-    if (stock === "1") {
+    if (onlyInStock) {
       const rawInvRows = await fetchAllRows(
         supabase
           .from("swu_inventory")
@@ -222,7 +237,7 @@ export async function GET(req: Request) {
     if (type) cardsQ = cardsQ.eq("card_type_label", type);
 
     const shouldBatchCardsByStock =
-      stock === "1" && stockCardUids && stockCardUids.length > 0;
+      onlyInStock && stockCardUids && stockCardUids.length > 0;
 
     if (aspects.length) {
       cardsQ = cardsQ.contains("aspects_labels", toPgArrayLiteral(aspects) as any);
@@ -431,7 +446,10 @@ export async function GET(req: Request) {
 
     for (const [, finishMap] of byCardFinish) {
       for (const [, row] of finishMap) {
-        row.recommended_condition = pickRecommendedCondition(row.variants);
+        row.recommended_condition = pickRecommendedCondition(
+          row.variants,
+          onlyInStock
+        );
       }
     }
 
@@ -447,13 +465,13 @@ export async function GET(req: Request) {
       if (!finishMap) continue;
 
       for (const [, row] of finishMap) {
-        if (stock === "1" && (row.stock_total ?? 0) <= 0) continue;
+        if (onlyInStock && (row.stock_total ?? 0) <= 0) continue;
 
         const recommendedCondition = row.recommended_condition ?? "NM";
         const recommendedVariant = row.variants?.[recommendedCondition];
         const recommendedPrice = Number(recommendedVariant?.price ?? 0);
 
-        if (recommendedPrice < 1) continue;
+        if (!Number.isFinite(recommendedPrice) || recommendedPrice <= 0) continue;
 
         items.push({
           ...c,
