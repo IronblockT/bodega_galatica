@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/hooks/useAuth';
 import { useCart } from '@/components/cart/CartProvider';
+import { useSellCart } from '@/components/sell-cart/SellCartProvider';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 type NavItem = {
@@ -206,6 +207,37 @@ function CartIcon({ className = 'h-5 w-5' }: { className?: string }) {
   );
 }
 
+function SellCartIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M5 6.5h14"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7 10.5h10"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9 14.5h6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function SiteHeader() {
   const router = useRouter();
 
@@ -224,6 +256,7 @@ export function SiteHeader() {
   const accountRef = useRef<HTMLDivElement>(null);
 
   const { count, items: cartItems, reserving, lastReserveError, expiresAt, reserveNow, clear } = useCart();
+  const sellCart = useSellCart();
   const [cartOpen, setCartOpen] = useState(false);
   const cartRef = useRef<HTMLDivElement>(null);
 
@@ -508,13 +541,34 @@ export function SiteHeader() {
                 </div>
               ))}
 
-              <Link
-                href="/vender"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block rounded-2xl bg-gradient-to-r from-orange-400 to-orange-500 px-4 py-3 text-center text-sm font-black uppercase tracking-wide text-[#0B0C10]"
-              >
-                Venda suas Cartas!
-              </Link>
+              <div className="space-y-2">
+                {mounted && sellCart.totalCount > 0 ? (
+                  <Link
+                    href="/vender/carrinho"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="
+        flex items-center justify-center gap-2 rounded-2xl
+        border border-orange-400/25 bg-white/5
+        px-4 py-3 text-center text-sm font-black uppercase tracking-wide
+        text-orange-200
+      "
+                  >
+                    <SellCartIcon className="h-4 w-4" />
+                    <span>Ver minha lista</span>
+                    <span className="rounded-full bg-orange-400 px-2 py-0.5 text-[11px] font-bold text-[#0B0C10]">
+                      {sellCart.totalCount > 99 ? "99+" : sellCart.totalCount}
+                    </span>
+                  </Link>
+                ) : null}
+
+                <Link
+                  href="/vender"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block rounded-2xl bg-gradient-to-r from-orange-400 to-orange-500 px-4 py-3 text-center text-sm font-black uppercase tracking-wide text-[#0B0C10]"
+                >
+                  Venda suas Cartas!
+                </Link>
+              </div>
             </div>
           </div>
         ) : null}
@@ -787,19 +841,6 @@ export function SiteHeader() {
               )}
             </div>
 
-            <Link
-              href="/vender"
-              className={[
-                'rounded-full px-4 py-2 text-sm font-semibold',
-                'text-[#0B0C10]',
-                'bg-gradient-to-r from-amber-300 via-amber-200 to-rose-200',
-                'shadow-[0_12px_32px_rgba(245,158,11,.22)]',
-                'hover:brightness-[1.03] transition',
-              ].join(' ')}
-            >
-              Vender
-            </Link>
-
             {!authReady ? (
               <div className="h-10 w-20 rounded-full border border-white/10 bg-white/5 animate-pulse" />
             ) : !safeIsLoggedIn ? (
@@ -899,7 +940,27 @@ export function SiteHeader() {
             />
           ))}
 
-          <div className="ml-auto flex w-[260px] justify-end">
+          <div className="ml-auto flex w-[430px] items-center justify-end gap-3">
+            {mounted && sellCart.totalCount > 0 ? (
+              <Link
+                href="/vender/carrinho"
+                className="
+        inline-flex items-center gap-2 rounded-full
+        border border-orange-400/25 bg-white/5
+        px-4 py-2 text-sm font-semibold text-orange-200
+        transition hover:border-orange-300/40 hover:bg-orange-400/10 hover:text-orange-100
+      "
+              >
+                <SellCartIcon className="h-4 w-4" />
+
+                <span>Ver minha lista</span>
+
+                <span className="rounded-full bg-orange-400 px-2 py-0.5 text-[11px] font-bold text-[#0B0C10]">
+                  {sellCart.totalCount > 99 ? "99+" : sellCart.totalCount}
+                </span>
+              </Link>
+            ) : null}
+
             <Link
               href="/vender"
               className={[
