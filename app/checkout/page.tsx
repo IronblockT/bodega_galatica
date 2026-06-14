@@ -312,6 +312,15 @@ export default function CheckoutPage() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
+        if (json?.code === "MISSING_REQUIRED_PROFILE") {
+          setCheckoutError(
+            json?.error ?? "Complete seus dados pessoais antes de finalizar a compra."
+          );
+
+          router.push(json?.redirect_to ?? "/minha-conta?next=/checkout&missingProfile=1");
+          return;
+        }
+
         if (json?.code === "MISSING_SHIPPING_ADDRESS") {
           setCheckoutError(
             json?.error ?? "Cadastre seu endereço de entrega antes de finalizar a compra."

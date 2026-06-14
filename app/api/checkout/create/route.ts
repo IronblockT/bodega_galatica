@@ -161,6 +161,64 @@ export async function POST(req: Request) {
       });
     };
 
+    const profileRes = await sb(
+      `profiles?select=id,email,full_name,phone,cpf,pix_key&id=eq.${encodeURIComponent(
+        body.user_id
+      )}&limit=1`,
+      { method: "GET" }
+    );
+
+    const profileRows = (await profileRes.json()) as Array<{
+      id?: string | null;
+      email?: string | null;
+      full_name?: string | null;
+      phone?: string | null;
+      cpf?: string | null;
+      pix_key?: string | null;
+    }>;
+
+    const profile = profileRows?.[0] ?? null;
+
+    const hasText = (value: unknown) => {
+      return typeof value === "string" && value.trim().length > 0;
+    };
+
+    const onlyDigits = (value: unknown) => {
+      return typeof value === "string" ? value.replace(/\D/g, "") : "";
+    };
+
+    const missingProfileFields: string[] = [];
+
+    const cpfDigits = onlyDigits(profile?.cpf);
+    const pixKey = String(profile?.pix_key ?? "").trim();
+
+    if (!profile?.id) {
+      missingProfileFields.push("profile");
+    }
+
+    if (!cpfDigits) {
+      missingProfileFields.push("cpf");
+    } else if (cpfDigits.length !== 11) {
+      missingProfileFields.push("cpf_invalid");
+    }
+
+    if (!pixKey) {
+      missingProfileFields.push("pix_key");
+    }
+
+    if (missingProfileFields.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "MISSING_REQUIRED_PROFILE",
+          error: "Complete seus dados pessoais antes de finalizar a compra.",
+          missing_fields: missingProfileFields,
+          redirect_to: "/minha-conta?next=/checkout&missingProfile=1",
+        },
+        { status: 409 }
+      );
+    }
+
     const addressRes = await sb(
       `addresses?select=id,user_id,label,is_default,cep,street,number,complement,district,city,state,created_at&user_id=eq.${encodeURIComponent(
         body.user_id
@@ -181,11 +239,7 @@ export async function POST(req: Request) {
       city?: string | null;
       state?: string | null;
       created_at?: string | null;
-    }>;
-
-    const hasText = (value: unknown) => {
-      return typeof value === "string" && value.trim().length > 0;
-    };
+    }>;    
 
     const isValidShippingAddress = (addr: (typeof addressRows)[number] | null | undefined) => {
       return !!addr?.id && hasText(addr.cep) && hasText(addr.street) && hasText(addr.number);

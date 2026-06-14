@@ -6,6 +6,7 @@ type ProfileRow = {
   full_name: string | null;
   phone: string | null;
   cpf: string | null;
+  pix_key: string | null;
   avatar_key?: string | null;
 };
 
@@ -31,6 +32,9 @@ export function ProfileForm({
   return (
     <div className={panelClass}>
       <h2 className={titleClass}>Dados pessoais</h2>
+      <p className="mb-4 text-xs text-white/60">
+        CPF e Chave Pix são obrigatórios para comprar e vender cartas na Bodega.
+      </p>
 
       <form onSubmit={onSave} className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="md:col-span-2">
@@ -54,13 +58,28 @@ export function ProfileForm({
         </div>
 
         <div>
-          <label className={labelClass}>CPF (opcional)</label>
+          <label className={labelClass}>CPF *</label>
           <input
             className={inputClass}
             value={profile?.cpf ?? ''}
             onChange={(e) => setProfile((p) => (p ? { ...p, cpf: e.target.value } : p))}
             placeholder="000.000.000-00"
           />
+        </div>
+
+        <div className="md:col-span-2">
+          <label className={labelClass}>Chave Pix *</label>
+          <input
+            className={inputClass}
+            value={profile?.pix_key ?? ''}
+            onChange={(e) =>
+              setProfile((p) => (p ? { ...p, pix_key: e.target.value } : p))
+            }
+            placeholder="CPF, email, telefone ou chave aleatória"
+          />
+          <p className="mt-1 text-[11px] text-white/45">
+            Usaremos essa chave para pagamentos de vendas aprovadas.
+          </p>
         </div>
 
         <div className="md:col-span-2 mt-2 flex justify-end">

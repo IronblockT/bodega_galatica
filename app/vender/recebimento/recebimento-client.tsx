@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/hooks/useAuth";
+import { useSellCart } from "@/components/sell-cart/SellCartProvider";
 
 type Quote = {
   sku_key: string;
@@ -56,27 +57,6 @@ type QuoteApiResponse =
   | { ok: true; quote: Quote }
   | { ok: false; error: string; detail?: unknown };
 
-type CreateOfferResponse =
-  | {
-    ok: true;
-    offer: {
-      offer_id: string;
-      offer_status: string;
-      payout_type: "cash" | "store_credit";
-      final_amount: number | string;
-      cash_reserved_amount: number | string;
-      manual_review_required: boolean;
-      review_reason: string | null;
-      item_id: string;
-      item_status: string;
-    };
-  }
-  | {
-    ok: false;
-    error: string;
-    detail?: unknown;
-  };
-
 type PayoutOption = {
   key: "store_credit" | "cash";
   title: string;
@@ -84,11 +64,14 @@ type PayoutOption = {
   description: string;
 };
 
+
+
 export function RecebimentoClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { isLoggedIn } = useAuth();
+  const sellCart = useSellCart();
 
   const sku = String(searchParams.get("sku") ?? "").trim();
   const qty = Math.max(parseInt(String(searchParams.get("qty") ?? "1"), 10) || 1, 1);
@@ -250,45 +233,27 @@ export function RecebimentoClient() {
       setSubmitting(true);
       setErrorMsg(null);
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        setErrorMsg("Você precisa estar logado para continuar.");
-        setSubmitting(false);
-        return;
-      }
-
-      const res = await fetch("/api/buylist/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          sku_key: sku,
-          quantity: qty,
-          payout_type: selectedPayout,
-        }),
+      sellCart.addItem({
+        sku_key: sku,
+        quantity: qty,
+        payout_type: selectedPayout,
+        quote_snapshot: quote,
+        card_snapshot: card
+          ? {
+            card_uid: card.card_uid,
+            expansion_code: card.expansion_code,
+            title: card.title,
+            subtitle: card.subtitle,
+            image_front_url: card.image_front_url,
+            card_type_label: card.card_type_label,
+            rarity_label: card.rarity_label,
+          }
+          : null,
       });
 
-      const json = (await res.json().catch(() => null)) as CreateOfferResponse | null;
-
-      if (!res.ok || !json?.ok || !json.offer) {
-        setErrorMsg(
-          json && "error" in json ? json.error : "Falha ao criar sua oferta."
-        );
-        setSubmitting(false);
-        return;
-      }
-
-      router.push(
-        `/vender/sucesso?offer_id=${encodeURIComponent(
-          json.offer.offer_id
-        )}&payout_type=${encodeURIComponent(json.offer.payout_type)}`
-      );
+      router.push("/vender/carrinho");
     } catch (err: any) {
-      setErrorMsg(err?.message ?? "Falha ao criar sua oferta.");
+      setErrorMsg(err?.message ?? "Falha ao adicionar carta à lista de venda.");
       setSubmitting(false);
     }
   }
@@ -457,7 +422,7 @@ export function RecebimentoClient() {
             ) : null}
 
             <p className="mt-6 text-sm leading-6 text-white/60">
-              Depois da confirmação, sua oferta será registrada com a forma de recebimento escolhida.
+              Depois da confirmação, esta carta será adicionada à sua lista de venda. Você poderá continuar adicionando outras cartas antes de finalizar.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -474,7 +439,7 @@ export function RecebimentoClient() {
                 onClick={handleContinue}
                 className="rounded-full bg-gradient-to-r from-orange-400 to-orange-500 px-6 py-3 text-center text-sm font-semibold text-[#0B0C10] transition-colors hover:from-orange-500 hover:to-orange-600 disabled:opacity-40"
               >
-                {submitting ? "Criando oferta..." : "Confirmar e continuar"}
+                {submitting ? "Adicionando..." : "Adicionar à lista"}
               </button>
             </div>
           </div>

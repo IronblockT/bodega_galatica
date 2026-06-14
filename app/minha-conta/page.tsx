@@ -17,6 +17,7 @@ type ProfileRow = {
   full_name: string | null;
   phone: string | null;
   cpf: string | null;
+  pix_key: string | null;
   avatar_key?: string | null;
 };
 
@@ -162,6 +163,7 @@ export default function MinhaContaPage() {
 
   const [missingAddressNotice, setMissingAddressNotice] = useState(false);
   const [checkoutReturnNext, setCheckoutReturnNext] = useState<string | null>(null);
+  const [missingProfileNotice, setMissingProfileNotice] = useState(false);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [address, setAddress] = useState<AddressRow | null>(null);
@@ -188,9 +190,11 @@ export default function MinhaContaPage() {
     const params = new URLSearchParams(window.location.search);
 
     const missingAddress = params.get("missingAddress") === "1";
+    const missingProfile = params.get("missingProfile") === "1";
     const next = params.get("next");
 
     setMissingAddressNotice(missingAddress);
+    setMissingProfileNotice(missingProfile);
 
     if (next && next.startsWith("/") && !next.startsWith("//")) {
       setCheckoutReturnNext(next);
@@ -215,7 +219,7 @@ export default function MinhaContaPage() {
 
       const { data: p, error: pErr } = await supabase
         .from('profiles')
-        .select('id, email, full_name, phone, cpf, avatar_key')
+        .select('id, email, full_name, phone, cpf, pix_key, avatar_key')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -231,7 +235,7 @@ export default function MinhaContaPage() {
         const { data: created, error: cErr } = await supabase
           .from('profiles')
           .upsert({ id: user.id, email: user.email ?? null }, { onConflict: 'id' })
-          .select('id, email, full_name, phone, cpf, avatar_key')
+          .select('id, email, full_name, phone, cpf, pix_key, avatar_key')
           .single();
 
         if (!mounted) return;
@@ -402,6 +406,7 @@ export default function MinhaContaPage() {
       full_name: profile.full_name?.trim() || null,
       phone: profile.phone?.trim() || null,
       cpf: profile.cpf ? onlyDigits(profile.cpf) : null,
+      pix_key: profile.pix_key?.trim() || null,
       avatar_key: profile.avatar_key ?? null,
     };
   }, [user?.id, profile, email]);
@@ -433,7 +438,35 @@ export default function MinhaContaPage() {
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
-    await saveProfile({ updateHeaderAvatar: true, successMsg: 'Perfil atualizado com sucesso.' });
+
+    const cpf = profile?.cpf ? onlyDigits(profile.cpf) : '';
+    const pixKey = profile?.pix_key?.trim() ?? '';
+
+    const missingRequiredFields: string[] = [];
+
+    if (!cpf) missingRequiredFields.push('CPF');
+    if (!pixKey) missingRequiredFields.push('Chave Pix');
+
+    if (cpf && cpf.length !== 11) {
+      setErrorMsg('CPF inválido. Informe um CPF com 11 dígitos.');
+      return;
+    }
+
+    if (missingRequiredFields.length > 0) {
+      setErrorMsg(
+        `Preencha os campos obrigatórios dos dados pessoais: ${missingRequiredFields.join(', ')}.`
+      );
+      return;
+    }
+
+    await saveProfile({
+      updateHeaderAvatar: true,
+      successMsg: 'Perfil atualizado com sucesso.',
+    });
+
+    if (missingProfileNotice && checkoutReturnNext) {
+      router.push(checkoutReturnNext);
+    }
   }
 
   async function handleSaveAvatar() {
@@ -553,12 +586,18 @@ export default function MinhaContaPage() {
 
           {/* Envelope dark */}
           <div className="rounded-2xl border border-white/10 bg-[#0B0C10] p-6 md:p-8">
-            {(errorMsg || okMsg || missingAddressNotice) && (
+            {(errorMsg || okMsg || missingAddressNotice || missingProfileNotice) && (
               <div className="mb-6 space-y-2">
                 {missingAddressNotice && (
                   <div className="rounded-xl border border-orange-400/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-100 backdrop-blur">
                     Cadastre seu endereço de entrega para continuar sua compra. Depois de salvar,
                     você será redirecionado de volta para o checkout.
+                  </div>
+                )}
+                {missingProfileNotice && (
+                  <div className="rounded-xl border border-orange-400/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-100 backdrop-blur">
+                    Complete seus dados pessoais, incluindo CPF e Chave Pix, para continuar sua compra.
+                    Depois de salvar, você poderá voltar ao checkout.
                   </div>
                 )}
                 {errorMsg && (
