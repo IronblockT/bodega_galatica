@@ -122,7 +122,9 @@ export function CardResultRow({ card }: any) {
       {/* Compra */}
       <div className="w-full border-t border-white/10 pt-4 text-left md:w-44 md:border-t-0 md:pt-0 md:text-right">
         <div className="text-xl font-semibold text-white">
-          R$ {Number(variant.price || 0).toFixed(2)}
+          {Number(variant.price ?? 0) > 0
+            ? `R$ ${Number(variant.price).toFixed(2)}`
+            : "Preço indisponível"}
         </div>
 
         <p className="mb-3 mt-1 text-xs text-white/60">
@@ -138,7 +140,11 @@ export function CardResultRow({ card }: any) {
         </div>
 
         <button
-          disabled={(variant.stock ?? 0) === 0 || qty <= 0}
+          disabled={
+            (variant.stock ?? 0) === 0 ||
+            qty <= 0 ||
+            Number(variant.price ?? 0) <= 0
+          }
           className={[
             "mt-3 w-full rounded-full px-4 py-2.5 text-xs font-semibold",
             "text-[#0B0C10]",

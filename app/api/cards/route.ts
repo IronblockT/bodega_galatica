@@ -30,12 +30,22 @@ function pickRecommendedCondition(
 
       if (s > 0 && p > 0) return c;
     }
+
+    for (const c of CONDITION_ORDER) {
+      const s = Number(variants?.[c]?.stock ?? 0);
+
+      if (s > 0) return c;
+    }
   }
 
   for (const c of CONDITION_ORDER) {
     const p = Number(variants?.[c]?.price ?? 0);
 
     if (p > 0) return c;
+  }
+
+  for (const c of CONDITION_ORDER) {
+    if (variants?.[c]) return c;
   }
 
   return "NM";
@@ -469,9 +479,13 @@ export async function GET(req: Request) {
 
         const recommendedCondition = row.recommended_condition ?? "NM";
         const recommendedVariant = row.variants?.[recommendedCondition];
-        const recommendedPrice = Number(recommendedVariant?.price ?? 0);
 
-        if (!Number.isFinite(recommendedPrice) || recommendedPrice <= 0) continue;
+        const rawRecommendedPrice = Number(recommendedVariant?.price ?? 0);
+
+        const recommendedPrice =
+          Number.isFinite(rawRecommendedPrice) && rawRecommendedPrice > 0
+            ? rawRecommendedPrice
+            : null;
 
         items.push({
           ...c,
@@ -486,8 +500,16 @@ export async function GET(req: Request) {
     }
 
     items.sort((a, b) => {
+      const aHasPrice = Number(a.recommended_price ?? 0) > 0;
+      const bHasPrice = Number(b.recommended_price ?? 0) > 0;
+
+      if (aHasPrice !== bHasPrice) {
+        return aHasPrice ? -1 : 1;
+      }
+
       const priceDiff =
         Number(b.recommended_price ?? 0) - Number(a.recommended_price ?? 0);
+
       if (priceDiff !== 0) return priceDiff;
 
       const titleDiff = `${a.title ?? ""}`.localeCompare(`${b.title ?? ""}`);
