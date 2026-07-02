@@ -161,6 +161,27 @@ export async function POST(req: Request) {
       });
     };
 
+    const callRpcJson = async (name: string, payload: unknown) => {
+      const res = await callRpc(name, payload);
+      const parsed = await safeJson<unknown>(res);
+      const detail = parsed.data ?? parsed.raw ?? null;
+
+      if (!res.ok) {
+        throw new Error(`RPC ${name} failed: ${JSON.stringify(detail).slice(0, 500)}`);
+      }
+
+      if (
+        detail &&
+        typeof detail === "object" &&
+        "ok" in detail &&
+        (detail as { ok?: boolean }).ok === false
+      ) {
+        throw new Error(`RPC ${name} returned ok=false: ${JSON.stringify(detail).slice(0, 500)}`);
+      }
+
+      return detail;
+    };
+
     const profileRes = await sb(
       `profiles?select=id,email,full_name,phone,cpf,pix_key&id=eq.${encodeURIComponent(
         body.user_id
@@ -239,7 +260,7 @@ export async function POST(req: Request) {
       city?: string | null;
       state?: string | null;
       created_at?: string | null;
-    }>;    
+    }>;
 
     const isValidShippingAddress = (addr: (typeof addressRows)[number] | null | undefined) => {
       return !!addr?.id && hasText(addr.cep) && hasText(addr.street) && hasText(addr.number);
@@ -547,6 +568,8 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           subtotal_brl: subtotal,
           shipping_brl: shipping,
+          coupon_discount_brl: couponDiscountSafe,
+          store_credit_applied_brl: storeCreditSafe,
           discount_brl: discount,
           total_brl: total,
           notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
@@ -700,6 +723,8 @@ export async function POST(req: Request) {
           status: "draft",
           subtotal_brl: subtotal,
           shipping_brl: shipping,
+          coupon_discount_brl: couponDiscountSafe,
+          store_credit_applied_brl: storeCreditSafe,
           discount_brl: discount,
           total_brl: total,
           currency: "BRL",
@@ -841,6 +866,10 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           status: "reserved",
           total_brl: 0,
+          coupon_discount_brl: Number.isFinite(requestedCouponDiscount)
+            ? requestedCouponDiscount
+            : 0,
+          store_credit_applied_brl: storeCreditApplied,
           discount_brl: discount,
           shipping_brl: shipping,
           subtotal_brl: subtotal,
@@ -848,7 +877,7 @@ export async function POST(req: Request) {
         }),
       });
 
-      await callRpc("rpc_checkout_commit", {
+      await callRpcJson("rpc_checkout_commit", {
         p_order_id: orderId,
         p_provider: "store_credit",
         p_provider_payment_id: `store_credit:${orderId}`,

@@ -53,6 +53,12 @@ async function safeReadText(res: Response) {
   return res.text().catch(() => "");
 }
 
+type MpWebhookPayload = {
+  data?: { id?: string | number | null } | null;
+  id?: string | number | null;
+  resource?: string | null;
+};
+
 export async function GET() {
   return NextResponse.json({ ok: true });
 }
@@ -61,7 +67,7 @@ export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
 
-    let payload: any = {};
+    let payload: MpWebhookPayload = {};
     try {
       payload = rawBody ? JSON.parse(rawBody) : {};
     } catch {
@@ -133,7 +139,7 @@ export async function POST(req: Request) {
       return res;
     };
 
-    const rpcJson = async (fn: string, body: any) => {
+    const rpcJson = async (fn: string, body: unknown) => {
       const r = await fetch(`${supabaseUrl}/rest/v1/rpc/${fn}`, {
         method: "POST",
         headers: {
@@ -149,7 +155,18 @@ export async function POST(req: Request) {
         throw new Error(`RPC ${fn} failed: ${txt}`);
       }
 
-      return txt ? JSON.parse(txt) : null;
+      const data = txt ? JSON.parse(txt) : null;
+
+      if (
+        data &&
+        typeof data === "object" &&
+        "ok" in data &&
+        (data as { ok?: boolean }).ok === false
+      ) {
+        throw new Error(`RPC ${fn} returned ok=false: ${txt}`);
+      }
+
+      return data;
     };
 
     const payRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
@@ -205,13 +222,20 @@ export async function POST(req: Request) {
       `&limit=1`;
 
     const existingRes = await sb(q, { method: "GET" });
-    const existing = (await existingRes.json()) as any[];
+    const existing = (await existingRes.json()) as Array<{
+      provider_payment_status?: string | null;
+      provider_payment_updated_at?: string | null;
+    }>;
     const existingRow = existing?.[0];
+
+    const shouldRetryCommit =
+      mpStatus === "approved" && String(orderRow.status ?? "") !== "paid";
 
     if (
       existingRow &&
       String(existingRow.provider_payment_status ?? "") === String(mpStatus) &&
-      String(existingRow.provider_payment_updated_at ?? "") === String(providerPaymentUpdatedAt ?? "")
+      String(existingRow.provider_payment_updated_at ?? "") === String(providerPaymentUpdatedAt ?? "") &&
+      !shouldRetryCommit
     ) {
       console.log("[MP webhook] idempotent event ignored", {
         orderId,
@@ -308,6 +332,6 @@ export async function POST(req: Request) {
       stack: e instanceof Error ? e.stack : undefined,
     });
 
-    return NextResponse.json({ received: true, handled: false });
+    return NextResponse.json({ received: true, handled: false }, { status: 500 });
   }
 }
