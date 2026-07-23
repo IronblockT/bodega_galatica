@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     const rpcRes = await fetch(
-      `${supabaseUrl}/rest/v1/rpc/calculate_buylist_quote`,
+      `${supabaseUrl}/rest/v1/rpc/calculate_buylist_quote_v2`,
       {
         method: "POST",
         headers: {

@@ -152,6 +152,25 @@ type CompetitiveLeaderProfile = {
   recentDecklists: MetaStatsDecklist[];
 };
 
+type MetaBuylistCandidatePayload = {
+  leader_key: string;
+  leader_name: string;
+  leader_subtitle?: string | null;
+  leader_expansion_code?: string | null;
+  base_name?: string | null;
+  card_name: string;
+  card_uid?: string | null;
+  card_expansion_code?: string | null;
+  image_url?: string | null;
+  meta_category: "core" | "popular" | "flex";
+  usage_pct?: number | null;
+  deck_count?: number | null;
+  sample_deck_count?: number | null;
+  rank_in_bucket?: number | null;
+  strength_score?: number | null;
+  source_detail?: string | null;
+};
+
 export const metadata: Metadata = {
   title: "Meta Premier ao Vivo | Bodega Galáctica",
   description: "Painel ao vivo do meta Premier de Star Wars: Unlimited com dados públicos do Karabast.",
@@ -788,6 +807,147 @@ function enrichCompetitiveLeaderProfiles(profiles: CompetitiveLeaderProfile[], c
   }));
 }
 
+
+function splitLeaderDisplayName(leaderName: string) {
+  const separator = leaderName.includes(" | ") ? " | " : leaderName.includes(" - ") ? " - " : "";
+
+  if (!separator) {
+    return {
+      name: leaderName.trim(),
+      subtitle: null as string | null,
+    };
+  }
+
+  const [name, ...subtitleParts] = leaderName.split(separator);
+
+  return {
+    name: name.trim(),
+    subtitle: subtitleParts.join(separator).trim() || null,
+  };
+}
+
+function leaderExpansionFromKarabastId(leaderKarabastId: string) {
+  const code = leaderKarabastId.split("_")[0]?.trim().toUpperCase();
+  return code || null;
+}
+
+function metaCategoryRank(category: "core" | "popular" | "flex") {
+  if (category === "core") return 1;
+  if (category === "popular") return 2;
+  return 3;
+}
+
+function buildMetaBuylistCandidatesFromProfiles(profiles: CompetitiveLeaderProfile[]) {
+  const candidatesByKey = new Map<
+    string,
+    MetaBuylistCandidatePayload & { categoryRank: number }
+  >();
+
+  for (const profile of profiles) {
+    const leaderParts = splitLeaderDisplayName(profile.leaderName);
+    const leaderKey = profile.leaderKarabastId || profile.leaderName;
+    const leaderExpansionCode = leaderExpansionFromKarabastId(profile.leaderKarabastId);
+    const topBaseName = profile.bases[0]?.baseName ?? null;
+
+    const groups: Array<["core" | "popular" | "flex", MetaStatsCardUsage[]]> = [
+      ["core", profile.mainboardGroups.Core],
+      ["popular", profile.mainboardGroups.Popular],
+      ["flex", profile.mainboardGroups.Flex],
+    ];
+
+    for (const [metaCategory, cards] of groups) {
+      cards.slice(0, 18).forEach((card, index) => {
+        const cardName = cleanCompetitiveCardName(card.displayName || card.cardName);
+        if (!cardName) return;
+
+        const key = `${leaderKey}::${card.cardUid || normalizeCardMatchKey(cardName)}`;
+        const categoryRank = metaCategoryRank(metaCategory);
+        const existing = candidatesByKey.get(key);
+
+        if (existing && existing.categoryRank <= categoryRank) return;
+
+        const usagePct = usageScore(card);
+
+        candidatesByKey.set(key, {
+          categoryRank,
+          leader_key: leaderKey,
+          leader_name: leaderParts.name || profile.leaderName,
+          leader_subtitle: leaderParts.subtitle,
+          leader_expansion_code: leaderExpansionCode,
+          base_name: topBaseName,
+          card_name: cardName,
+          card_uid: card.cardUid ?? null,
+          card_expansion_code: card.expansionCode ?? null,
+          image_url: card.imageUrl ?? null,
+          meta_category: metaCategory,
+          usage_pct: Number.isFinite(usagePct) ? usagePct : null,
+          deck_count: profile.totalDecks || null,
+          sample_deck_count: profile.totalMetaDecks || profile.totalDecks || null,
+          rank_in_bucket: index + 1,
+          strength_score: Number.isFinite(usagePct) ? usagePct + (4 - categoryRank) * 10 : null,
+          source_detail: "meta_page_competitive_leader_profiles",
+        });
+      });
+    }
+  }
+
+  return Array.from(candidatesByKey.values());
+}
+
+async function readLatestMetaCandidateSeenAt(supabaseUrl: string, serviceRoleKey: string) {
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/bodega_meta_buylist_candidates?select=last_seen_at&source=eq.swu_meta_stats&order=last_seen_at.desc&limit=1`,
+      {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) return null;
+
+    const rows = (await response.json()) as Array<{ last_seen_at?: string | null }>;
+    return rows[0]?.last_seen_at ? new Date(rows[0].last_seen_at).getTime() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function upsertMetaBuylistCandidates(candidates: MetaBuylistCandidatePayload[]) {
+  if (!candidates.length) return;
+
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) return;
+
+  const latestSeenAt = await readLatestMetaCandidateSeenAt(supabaseUrl, serviceRoleKey);
+  const sixHoursMs = 6 * 60 * 60 * 1000;
+
+  if (latestSeenAt && Date.now() - latestSeenAt < sixHoursMs) return;
+
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/rpc/upsert_bodega_meta_buylist_candidates`, {
+      method: "POST",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        p_candidates: candidates,
+        p_source: "swu_meta_stats",
+      }),
+      cache: "no-store",
+    });
+  } catch {
+    // A página de meta não deve quebrar se o sync de buylist falhar.
+  }
+}
+
 export default async function MetaPage() {
   const [liveResponse, karabastLeaders] = await Promise.all([
     fetchJson<KarabastLiveResponse>("https://api.karabast.net/api/ongoing-games", {
@@ -833,6 +993,8 @@ export default async function MetaPage() {
     competitiveLeaderProfiles,
     (competitiveCatalogCards ?? []) as CatalogCard[]
   );
+  const metaBuylistCandidates = buildMetaBuylistCandidatesFromProfiles(enrichedCompetitiveLeaderProfiles);
+  await upsertMetaBuylistCandidates(metaBuylistCandidates);
 
   return (
     <>

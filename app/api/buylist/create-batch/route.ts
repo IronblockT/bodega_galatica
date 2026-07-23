@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     if (cashItems.length > 0) {
       const { data, error } = await supabaseAdmin.rpc(
-        "create_buylist_offer_multi",
+        "create_buylist_offer_multi_v2",
         {
           p_user_id: userId,
           p_requested_payout_type: "cash",
@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
 
     if (storeCreditItems.length > 0) {
       const { data, error } = await supabaseAdmin.rpc(
-        "create_buylist_offer_multi",
+        "create_buylist_offer_multi_v2",
         {
           p_user_id: userId,
           p_requested_payout_type: "store_credit",

@@ -101,7 +101,7 @@ type CompetitiveLeaderProfile = {
   recentDecklists: MetaStatsDecklist[];
 };
 
-type CardPoolFilter = "todos" | "current" | "nextSet";
+type CardPoolFilter = "todos" | "current";
 type LeaderSetFilter = "todos" | "ASH" | "LAW" | "SEC" | "LOF" | "JTL";
 
 type LiveLeader = {
@@ -205,8 +205,7 @@ function formatDate(value?: string) {
 }
 
 function formatCardPool(cardPool: string | null) {
-  if (cardPool === "current") return "Current";
-  if (cardPool === "nextSet") return "Next Set";
+  if (cardPool === "current") return "Meta atual";
   return cardPool ?? "-";
 }
 
@@ -355,11 +354,10 @@ function LeadersBoard({
                   key={set}
                   type="button"
                   onClick={() => onSelectLeaderSet(set)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wide transition ${
-                    leaderSet === set
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wide transition ${leaderSet === set
                       ? "border-orange-300 bg-orange-500 text-white shadow-[0_0_22px_rgba(249,115,22,0.28)]"
                       : "border-white/15 bg-white/5 text-white/60 hover:border-white/30 hover:text-white"
-                  }`}
+                    }`}
                 >
                   {set === "todos" ? "Todos" : set}
                 </button>
@@ -419,11 +417,10 @@ function LeadersBoard({
                         key={`${leader.karabastId}-bar`}
                         type="button"
                         onClick={() => onSelectLeader(leader.karabastId)}
-                        className={`group relative w-full overflow-hidden rounded-2xl border px-4 py-3 text-left transition hover:bg-white/[0.055] ${
-                          selectedLeaderId === leader.karabastId
+                        className={`group relative w-full overflow-hidden rounded-2xl border px-4 py-3 text-left transition hover:bg-white/[0.055] ${selectedLeaderId === leader.karabastId
                             ? "border-orange-300 bg-orange-500/10"
                             : "border-white/10 bg-white/[0.03]"
-                        }`}
+                          }`}
                       >
                         <div
                           className={`absolute inset-y-0 left-0 rounded-2xl ${accent.soft} transition-all duration-500`}
@@ -453,11 +450,10 @@ function LeadersBoard({
                   key={leader.karabastId}
                   type="button"
                   onClick={() => onSelectLeader(leader.karabastId)}
-                  className={`group flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition hover:bg-white/[0.055] ${
-                    selectedLeaderId === leader.karabastId
+                  className={`group flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition hover:bg-white/[0.055] ${selectedLeaderId === leader.karabastId
                       ? "border-orange-300 bg-orange-500/10"
                       : "border-white/10 bg-white/[0.035]"
-                  }`}
+                    }`}
                 >
                   <RankBadge rank={leader.rank} />
                   <LeaderPortrait leader={leader} className="aspect-[395/527] h-14 rounded-2xl" />
@@ -579,7 +575,7 @@ function decklistCardBuyHref(card: MetaStatsDecklistCard) {
 }
 
 function decklistCardSellHref(card: MetaStatsDecklistCard) {
-  return `/venda-suas-cartas?search=${encodeURIComponent(decklistCardName(card))}`;
+  return `/vender?q=${encodeURIComponent(decklistCardName(card))}`;
 }
 
 function groupDecklistCards(cards: MetaStatsDecklistCard[]) {
@@ -740,7 +736,8 @@ function CompetitiveCardRow({
   const accent = ACCENTS[tone % ACCENTS.length];
   const score = usageScore(card);
   const buyHref = card.searchHref ?? `/cartas?search=${encodeURIComponent(card.cardName)}`;
-  const sellHref = `/venda-suas-cartas?search=${encodeURIComponent(card.cardName)}`;
+  const sellSearchName = card.cardName || card.displayName || "";
+  const sellHref = `/vender?q=${encodeURIComponent(sellSearchName)}`;
   const subtitle = readableCardText(card.subtitle);
   const cardType = readableCardText(card.cardType);
 
@@ -1219,8 +1216,8 @@ export function MetaDashboard({
       })
       .filter(Boolean)
       .sort((a, b) => b!.appearancesWithLeader - a!.appearancesWithLeader) as Array<
-      LiveBase & { appearancesWithLeader: number; shareWithLeaderPct: number }
-    >;
+        LiveBase & { appearancesWithLeader: number; shareWithLeaderPct: number }
+      >;
   }, [liveStats.bases, liveStats.basesByLeader, selectedLeader]);
 
   const selectedCompetitiveProfile = useMemo(() => {
@@ -1229,7 +1226,7 @@ export function MetaDashboard({
   }, [competitiveLeaderProfiles, selectedLeader]);
 
   const currentCount = filteredGames.filter((game) => game.cardPool === "current").length;
-  const nextSetCount = filteredGames.filter((game) => game.cardPool === "nextSet").length;
+  const currentShare = filteredGames.length ? (currentCount / filteredGames.length) * 100 : 0;
   const topLeader = visibleLeaders[0] ?? liveStats.leaders[0];
   const topBase = liveStats.bases[0];
 
@@ -1261,16 +1258,15 @@ export function MetaDashboard({
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              {(["todos", "current", "nextSet"] as CardPoolFilter[]).map((mode) => (
+              {(["todos", "current"] as CardPoolFilter[]).map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setCardPool(mode)}
-                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-wide transition ${
-                    cardPool === mode
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-wide transition ${cardPool === mode
                       ? "border-orange-300 bg-orange-500 text-white shadow-[0_0_22px_rgba(249,115,22,0.32)]"
                       : "border-white/15 bg-white/5 text-white/65 hover:border-white/30 hover:text-white"
-                  }`}
+                    }`}
                 >
                   {mode === "todos" ? "Todos" : formatCardPool(mode)}
                 </button>
@@ -1290,13 +1286,13 @@ export function MetaDashboard({
 
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Card pools no filtro atual</p>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Filtro do meta atual</p>
             <div className="mt-3 flex items-center gap-3">
               <div className="h-3 flex-1 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-300" style={{ width: `${filteredGames.length ? (currentCount / filteredGames.length) * 100 : 0}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-300" style={{ width: `${currentShare}%` }} />
               </div>
-              <span className="text-sm font-black text-white">Current {currentCount}</span>
-              <span className="text-sm font-black text-orange-200">Next Set {nextSetCount}</span>
+              <span className="text-sm font-black text-white">Meta atual {currentCount}</span>
+              <span className="text-sm font-black text-orange-200">Todos {filteredGames.length}</span>
             </div>
           </div>
           <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">

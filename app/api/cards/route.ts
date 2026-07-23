@@ -15,6 +15,62 @@ function toPgArrayLiteral(arr: string[]) {
   return `{${escaped.join(",")}}`;
 }
 
+function escapeIlikePattern(value: string) {
+  return value
+    .trim()
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+}
+
+function quotePostgrestLogicValue(value: string) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function buildIlikePattern(value: string) {
+  return `%${escapeIlikePattern(value)}%`;
+}
+
+function splitTitleSubtitleSearch(value: string) {
+  const cleaned = value.trim();
+
+  const dashIndex = cleaned.indexOf(" - ");
+  if (dashIndex > 0) {
+    const title = cleaned.slice(0, dashIndex).trim();
+    const subtitle = cleaned.slice(dashIndex + 3).trim();
+
+    if (title && subtitle) return { title, subtitle };
+  }
+
+  const commaIndex = cleaned.indexOf(",");
+  if (commaIndex > 0) {
+    const title = cleaned.slice(0, commaIndex).trim();
+    const subtitle = cleaned.slice(commaIndex + 1).trim();
+
+    if (title && subtitle) return { title, subtitle };
+  }
+
+  return null;
+}
+
+function applySafeCardTextSearch(query: any, rawQ: string) {
+  const cleanQ = rawQ.trim();
+  if (!cleanQ) return query;
+
+  const titleSubtitleSearch = splitTitleSubtitleSearch(cleanQ);
+
+  if (titleSubtitleSearch) {
+    return query
+      .ilike("title", buildIlikePattern(titleSubtitleSearch.title))
+      .ilike("subtitle", buildIlikePattern(titleSubtitleSearch.subtitle));
+  }
+
+  const safePattern = buildIlikePattern(cleanQ);
+  const quotedPattern = quotePostgrestLogicValue(safePattern);
+
+  return query.or(`title.ilike.${quotedPattern},subtitle.ilike.${quotedPattern}`);
+}
+
 const CONDITION_ORDER = ["NM", "EX", "VG", "G", "LP", "MP", "HP", "DMG"] as const;
 const BATCH_SIZE = 200;
 const SUPABASE_PAGE_SIZE = 1000;
@@ -238,8 +294,7 @@ export async function GET(req: Request) {
       );
 
     if (q) {
-      const qEsc = q.replace(/,/g, "\\,");
-      cardsQ = cardsQ.or(`title.ilike.%${qEsc}%,subtitle.ilike.%${qEsc}%`);
+      cardsQ = applySafeCardTextSearch(cardsQ, q);
     }
 
     if (set) cardsQ = cardsQ.eq("expansion_code", set);
@@ -299,8 +354,7 @@ export async function GET(req: Request) {
         stockCardUids ?? [],
         (query) => {
           if (q) {
-            const qEsc = q.replace(/,/g, "\\,");
-            query = query.or(`title.ilike.%${qEsc}%,subtitle.ilike.%${qEsc}%`);
+            query = applySafeCardTextSearch(query, q);
           }
 
           if (set) query = query.eq("expansion_code", set);

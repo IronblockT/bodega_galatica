@@ -215,75 +215,112 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
-    const q =
-      `payments?select=id,provider_payment_status,provider_payment_updated_at` +
+    const exactPaymentQuery =
+      `payments?select=id,provider_preference_id,provider_payment_status,provider_payment_updated_at` +
+      `&order_id=eq.${encodeURIComponent(orderId)}` +
       `&provider=eq.mercadopago` +
       `&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}` +
       `&limit=1`;
 
-    const existingRes = await sb(q, { method: "GET" });
-    const existing = (await existingRes.json()) as Array<{
+    const exactPaymentRes = await sb(exactPaymentQuery, { method: "GET" });
+    const exactPaymentRows = (await exactPaymentRes.json()) as Array<{
+      id: string;
+      provider_preference_id?: string | null;
       provider_payment_status?: string | null;
       provider_payment_updated_at?: string | null;
     }>;
-    const existingRow = existing?.[0];
+    const exactPaymentRow = exactPaymentRows?.[0];
+
+    const pendingPaymentQuery =
+      `payments?select=id,provider_preference_id,created_at` +
+      `&order_id=eq.${encodeURIComponent(orderId)}` +
+      `&provider=eq.mercadopago` +
+      `&provider_payment_id=is.null` +
+      `&order=created_at.asc` +
+      `&limit=1`;
+
+    const pendingPaymentRes = await sb(pendingPaymentQuery, { method: "GET" });
+    const pendingPaymentRows = (await pendingPaymentRes.json()) as Array<{
+      id: string;
+      provider_preference_id?: string | null;
+      created_at?: string | null;
+    }>;
+    const pendingPaymentRow = pendingPaymentRows?.[0];
 
     const shouldRetryCommit =
       mpStatus === "approved" && String(orderRow.status ?? "") !== "paid";
 
-    if (
-      existingRow &&
-      String(existingRow.provider_payment_status ?? "") === String(mpStatus) &&
-      String(existingRow.provider_payment_updated_at ?? "") === String(providerPaymentUpdatedAt ?? "") &&
-      !shouldRetryCommit
-    ) {
+    const samePaymentEvent =
+      !!exactPaymentRow &&
+      String(exactPaymentRow.provider_payment_status ?? "") === String(mpStatus) &&
+      String(exactPaymentRow.provider_payment_updated_at ?? "") ===
+        String(providerPaymentUpdatedAt ?? "");
+
+    const internalStatus = mapInternalPaymentStatus(mpStatus);
+
+    const paymentUpdatePayload = {
+      status: internalStatus,
+      provider_payment_status: mpStatus,
+      provider_payment_updated_at: providerPaymentUpdatedAt,
+      provider_payload: payment,
+      amount_brl: payment.transaction_amount ?? null,
+      currency: payment.currency_id ?? "BRL",
+    };
+
+    if (exactPaymentRow?.id) {
+      // O pagamento com o ID do Mercado Pago já existe. Atualiza-o e,
+      // caso ainda exista a linha pending criada no checkout, preserva
+      // o preference_id e remove somente a duplicata sem payment_id.
+      await sb(`payments?id=eq.${encodeURIComponent(exactPaymentRow.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...paymentUpdatePayload,
+          provider_preference_id:
+            exactPaymentRow.provider_preference_id ??
+            pendingPaymentRow?.provider_preference_id ??
+            null,
+        }),
+      });
+
+      if (
+        pendingPaymentRow?.id &&
+        pendingPaymentRow.id !== exactPaymentRow.id
+      ) {
+        await sb(`payments?id=eq.${encodeURIComponent(pendingPaymentRow.id)}`, {
+          method: "DELETE",
+        });
+      }
+    } else if (pendingPaymentRow?.id) {
+      // Fluxo normal: reutiliza a linha pending criada no checkout,
+      // mantendo o provider_preference_id já gravado nela.
+      await sb(`payments?id=eq.${encodeURIComponent(pendingPaymentRow.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...paymentUpdatePayload,
+          provider_payment_id: providerPaymentId,
+        }),
+      });
+    } else {
+      // Fallback para notificações sem uma linha pending prévia.
+      await sb("payments", {
+        method: "POST",
+        body: JSON.stringify({
+          order_id: orderId,
+          provider: "mercadopago",
+          provider_payment_id: providerPaymentId,
+          ...paymentUpdatePayload,
+        }),
+      });
+    }
+
+    if (samePaymentEvent && !shouldRetryCommit) {
       console.log("[MP webhook] idempotent event ignored", {
         orderId,
         paymentId: providerPaymentId,
         mpStatus,
       });
+
       return NextResponse.json({ received: true, idempotent: true });
-    }
-
-    const internalStatus = mapInternalPaymentStatus(mpStatus);
-
-    try {
-      await sb("payments", {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify({
-          order_id: orderId,
-          provider: "mercadopago",
-          status: internalStatus,
-          provider_payment_id: providerPaymentId,
-          provider_payment_status: mpStatus,
-          provider_payment_updated_at: providerPaymentUpdatedAt,
-          provider_payload: payment,
-          amount_brl: payment.transaction_amount ?? null,
-          currency: payment.currency_id ?? "BRL",
-        }),
-      });
-    } catch (insertErr) {
-      console.warn("[MP webhook] payments upsert fallback to patch", {
-        orderId,
-        paymentId: providerPaymentId,
-        message: insertErr instanceof Error ? insertErr.message : String(insertErr),
-      });
-
-      await sb(
-        `payments?provider=eq.mercadopago&provider_payment_id=eq.${encodeURIComponent(providerPaymentId)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            status: internalStatus,
-            provider_payment_status: mpStatus,
-            provider_payment_updated_at: providerPaymentUpdatedAt,
-            provider_payload: payment,
-            amount_brl: payment.transaction_amount ?? null,
-            currency: payment.currency_id ?? "BRL",
-          }),
-        }
-      );
     }
 
     if (mpStatus === "approved") {
