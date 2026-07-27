@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 
 type CreateCheckoutBody = {
-  user_id: string;
+  user_id?: string;
   order_id?: string | null;
   items?: Array<{ sku_key: string; qty: number }>;
   payer?: { email?: string; name?: string };
   idempotency_key?: string;
 
-  shipping_brl?: number | string | null;
   coupon_code?: string | null;
-  coupon_discount_brl?: number | string | null;
   store_credit_applied_brl?: number | string | null;
-  final_total_brl?: number | string | null;
 };
 
 type InvRow = {
@@ -92,11 +89,17 @@ const mustJson = async <T = unknown>(res: Response, label: string) => {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as CreateCheckoutBody;
+    const auth = req.headers.get("authorization") ?? "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
 
-    if (!body?.user_id) {
-      return NextResponse.json({ error: "user_id é obrigatório" }, { status: 400 });
+    if (!token) {
+      return NextResponse.json(
+        { error: "Sessão não autenticada" },
+        { status: 401 }
+      );
     }
+
+    const body = (await req.json()) as CreateCheckoutBody;
 
     const hasOrderId = !!String(body?.order_id ?? "").trim();
     const hasItems = Array.isArray(body?.items) && body.items.length > 0;
@@ -114,14 +117,17 @@ export async function POST(req: Request) {
 
     const supabaseUrl = process.env.SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabaseAnonKey =
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const appUrl = process.env.APP_URL!;
     const mpAccessToken = process.env.MP_ACCESS_TOKEN!;
 
-    if (!supabaseUrl || !supabaseKey || !appUrl || !mpAccessToken) {
+    if (!supabaseUrl || !supabaseKey || !supabaseAnonKey || !appUrl || !mpAccessToken) {
       return NextResponse.json(
         {
           error:
-            "Env vars ausentes (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/APP_URL/MP_ACCESS_TOKEN)",
+            "Env vars ausentes (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/SUPABASE_ANON_KEY/APP_URL/MP_ACCESS_TOKEN)",
         },
         { status: 500 }
       );
@@ -148,6 +154,36 @@ export async function POST(req: Request) {
 
       return res;
     };
+
+    const meRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!meRes.ok) {
+      return NextResponse.json(
+        { error: "Sessão inválida ou expirada" },
+        { status: 401 }
+      );
+    }
+
+    const me = (await meRes.json()) as {
+      id?: string | null;
+      email?: string | null;
+    };
+
+    const userId = String(me?.id ?? "").trim();
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Usuário inválido" },
+        { status: 401 }
+      );
+    }
 
     const callRpc = async (name: string, payload: unknown) => {
       return fetch(`${supabaseUrl}/rest/v1/rpc/${name}`, {
@@ -182,9 +218,59 @@ export async function POST(req: Request) {
       return detail;
     };
 
+    // =====================================================
+    // Regras oficiais do checkout
+    // =====================================================
+    const settingsRes = await sb(
+      "checkout_settings?select=shipping_flat_brl,coupon_discount_percent,free_shipping_min_brl&limit=1",
+      { method: "GET" }
+    );
+
+    const settingsRows = (await settingsRes.json()) as Array<{
+      shipping_flat_brl?: number | string | null;
+      coupon_discount_percent?: number | string | null;
+      free_shipping_min_brl?: number | string | null;
+    }>;
+
+    const checkoutSettings = settingsRows?.[0];
+
+    if (!checkoutSettings) {
+      return NextResponse.json(
+        { error: "Configurações do checkout não encontradas" },
+        { status: 500 }
+      );
+    }
+
+    const shippingFlatBrl = asNumber(
+      checkoutSettings.shipping_flat_brl ?? 0
+    );
+
+    const couponDiscountPercent = asNumber(
+      checkoutSettings.coupon_discount_percent ?? 0
+    );
+
+    const freeShippingMinBrl = asNumber(
+      checkoutSettings.free_shipping_min_brl ?? 0
+    );
+
+    if (
+      !Number.isFinite(shippingFlatBrl) ||
+      shippingFlatBrl < 0 ||
+      !Number.isFinite(couponDiscountPercent) ||
+      couponDiscountPercent < 0 ||
+      couponDiscountPercent > 100 ||
+      !Number.isFinite(freeShippingMinBrl) ||
+      freeShippingMinBrl < 0
+    ) {
+      return NextResponse.json(
+        { error: "Configurações do checkout inválidas" },
+        { status: 500 }
+      );
+    }
+
     const profileRes = await sb(
       `profiles?select=id,email,full_name,phone,cpf,pix_key&id=eq.${encodeURIComponent(
-        body.user_id
+        userId
       )}&limit=1`,
       { method: "GET" }
     );
@@ -242,7 +328,7 @@ export async function POST(req: Request) {
 
     const addressRes = await sb(
       `addresses?select=id,user_id,label,is_default,cep,street,number,complement,district,city,state,created_at&user_id=eq.${encodeURIComponent(
-        body.user_id
+        userId
       )}&order=is_default.desc,created_at.desc&limit=10`,
       { method: "GET" }
     );
@@ -282,7 +368,7 @@ export async function POST(req: Request) {
     }
 
     console.log("[checkout/address-validation]", {
-      user_id: body.user_id,
+      user_id: userId,
       found_addresses: addressRows.length,
       selected_address_id: shippingAddress?.id ?? null,
       selected_is_default: shippingAddress?.is_default ?? null,
@@ -326,12 +412,38 @@ export async function POST(req: Request) {
       );
     }
 
+    // =====================================================
+    // Saldo oficial de crédito da loja
+    // =====================================================
+    const storeCreditRes = await sb(
+      `user_store_credit?select=user_id,balance_brl&user_id=eq.${encodeURIComponent(
+        userId
+      )}&limit=1`,
+      { method: "GET" }
+    );
+
+    const storeCreditRows = (await storeCreditRes.json()) as Array<{
+      user_id?: string;
+      balance_brl?: number | string | null;
+    }>;
+
+    const storeCreditBalance = asNumber(
+      storeCreditRows?.[0]?.balance_brl ?? 0
+    );
+
+    if (!Number.isFinite(storeCreditBalance) || storeCreditBalance < 0) {
+      return NextResponse.json(
+        { error: "Saldo de crédito da loja inválido" },
+        { status: 500 }
+      );
+    }
+
     const idem = body.idempotency_key?.trim();
 
     if (idem) {
       const existingOrderRes = await sb(
         `orders?select=id,status&user_id=eq.${encodeURIComponent(
-          body.user_id
+          userId
         )}&idempotency_key=eq.${encodeURIComponent(idem)}&limit=1`,
         { method: "GET" }
       );
@@ -370,36 +482,55 @@ export async function POST(req: Request) {
     let enriched: EnrichedItem[] = [];
     let subtotal = 0;
     let shipping = 0;
+    let couponDiscount = 0;
+    let storeCreditApplied = 0;
     let discount = 0;
     let total = 0;
     let reservePayload: unknown = null;
 
-    const requestedShipping = asNumber(body.shipping_brl ?? 0);
-    const requestedCouponDiscount = asNumber(body.coupon_discount_brl ?? 0);
-    const requestedStoreCredit = asNumber(body.store_credit_applied_brl ?? 0);
-    const requestedFinalTotal = asNumber(body.final_total_brl ?? 0);
-    const requestedCouponCode = String(body.coupon_code ?? "").trim().toUpperCase() || null;
+    const requestedStoreCredit = asNumber(
+      body.store_credit_applied_brl ?? 0
+    );
 
-    if (Number.isFinite(requestedShipping) && requestedShipping < 0) {
-      return NextResponse.json({ error: "shipping_brl inválido" }, { status: 400 });
-    }
+    const requestedCouponCode =
+      String(body.coupon_code ?? "").trim().toUpperCase() || null;
 
-    if (Number.isFinite(requestedCouponDiscount) && requestedCouponDiscount < 0) {
-      return NextResponse.json({ error: "coupon_discount_brl inválido" }, { status: 400 });
+    let hasValidCoupon = false;
+
+    if (requestedCouponCode) {
+      const couponRes = await sb(
+        `checkout_coupons?select=id,code,active&code=eq.${encodeURIComponent(
+          requestedCouponCode
+        )}&active=eq.true&limit=1`,
+        { method: "GET" }
+      );
+
+      const couponRows = (await couponRes.json()) as Array<{
+        id?: string;
+        code?: string;
+        active?: boolean;
+      }>;
+
+      const coupon = couponRows?.[0];
+
+      if (!coupon?.id) {
+        return NextResponse.json(
+          { error: "Cupom inválido ou inativo" },
+          { status: 400 }
+        );
+      }
+
+      hasValidCoupon = true;
     }
 
     if (Number.isFinite(requestedStoreCredit) && requestedStoreCredit < 0) {
       return NextResponse.json({ error: "store_credit_applied_brl inválido" }, { status: 400 });
     }
 
-    if (Number.isFinite(requestedFinalTotal) && requestedFinalTotal < 0) {
-      return NextResponse.json({ error: "final_total_brl inválido" }, { status: 400 });
-    }
-
     if (orderId) {
       const orderRes = await sb(
         `orders?select=id,status,subtotal_brl,shipping_brl,discount_brl,total_brl&user_id=eq.${encodeURIComponent(
-          body.user_id
+          userId
         )}&id=eq.${encodeURIComponent(orderId)}&limit=1`,
         { method: "GET" }
       );
@@ -538,38 +669,51 @@ export async function POST(req: Request) {
 
       subtotal = enriched.reduce((acc, x) => acc + x.line_total_brl, 0);
 
-      shipping = Number.isFinite(requestedShipping)
-        ? requestedShipping
-        : asNumber(existingOrder.shipping_brl ?? 0);
-
-      if (!Number.isFinite(shipping)) shipping = 0;
-
-      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount)
-        ? requestedCouponDiscount
+      couponDiscount = hasValidCoupon
+        ? Number((subtotal * (couponDiscountPercent / 100)).toFixed(2))
         : 0;
 
-      const storeCreditSafe = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
+      shipping =
+        freeShippingMinBrl > 0 && subtotal >= freeShippingMinBrl
+          ? 0
+          : shippingFlatBrl;
 
-      discount = couponDiscountSafe + storeCreditSafe;
 
-      const computedTotal = Math.max(subtotal + shipping - discount, 0);
+      const requestedStoreCreditSafe = Number.isFinite(requestedStoreCredit)
+        ? Math.max(requestedStoreCredit, 0)
+        : 0;
 
-      total =
-        Number.isFinite(requestedFinalTotal) && requestedFinalTotal >= 0
-          ? requestedFinalTotal
-          : computedTotal;
+      const maxStoreCreditForOrder = Math.max(
+        subtotal - couponDiscount,
+        0
+      );
 
-      if (!Number.isFinite(total) || total < 0) {
-        total = computedTotal;
-      }
+      storeCreditApplied = Number(
+        Math.min(
+          requestedStoreCreditSafe,
+          storeCreditBalance,
+          maxStoreCreditForOrder
+        ).toFixed(2)
+      );
+
+      discount = Number(
+        (couponDiscount + storeCreditApplied).toFixed(2)
+      );
+
+      total = Number(
+        Math.max(
+          subtotal + shipping - discount,
+          0
+        ).toFixed(2)
+      );
 
       await sb(`orders?id=eq.${orderId}`, {
         method: "PATCH",
         body: JSON.stringify({
           subtotal_brl: subtotal,
           shipping_brl: shipping,
-          coupon_discount_brl: couponDiscountSafe,
-          store_credit_applied_brl: storeCreditSafe,
+          coupon_discount_brl: couponDiscount,
+          store_credit_applied_brl: storeCreditApplied,
           discount_brl: discount,
           total_brl: total,
           notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
@@ -694,37 +838,55 @@ export async function POST(req: Request) {
       });
 
       subtotal = enriched.reduce((acc, x) => acc + x.line_total_brl, 0);
-      shipping = Number.isFinite(requestedShipping) ? requestedShipping : 0;
 
-      const couponDiscountSafe = Number.isFinite(requestedCouponDiscount)
-        ? requestedCouponDiscount
+      couponDiscount = hasValidCoupon
+        ? Number((subtotal * (couponDiscountPercent / 100)).toFixed(2))
         : 0;
 
-      const storeCreditSafe = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
+      shipping =
+        freeShippingMinBrl > 0 && subtotal >= freeShippingMinBrl
+          ? 0
+          : shippingFlatBrl;
 
-      discount = couponDiscountSafe + storeCreditSafe;
 
-      const computedTotal = Math.max(subtotal + shipping - discount, 0);
+      const requestedStoreCreditSafe = Number.isFinite(requestedStoreCredit)
+        ? Math.max(requestedStoreCredit, 0)
+        : 0;
 
-      total =
-        Number.isFinite(requestedFinalTotal) && requestedFinalTotal >= 0
-          ? requestedFinalTotal
-          : computedTotal;
+      const maxStoreCreditForOrder = Math.max(
+        subtotal - couponDiscount,
+        0
+      );
 
-      if (!Number.isFinite(total) || total < 0) {
-        total = computedTotal;
-      }
+      storeCreditApplied = Number(
+        Math.min(
+          requestedStoreCreditSafe,
+          storeCreditBalance,
+          maxStoreCreditForOrder
+        ).toFixed(2)
+      );
+
+      discount = Number(
+        (couponDiscount + storeCreditApplied).toFixed(2)
+      );
+
+      total = Number(
+        Math.max(
+          subtotal + shipping - discount,
+          0
+        ).toFixed(2)
+      );
 
       const orderRes = await sb("orders?select=id", {
         method: "POST",
         body: JSON.stringify({
-          user_id: body.user_id,
+          user_id: userId,
           idempotency_key: idem ?? null,
           status: "draft",
           subtotal_brl: subtotal,
           shipping_brl: shipping,
-          coupon_discount_brl: couponDiscountSafe,
-          store_credit_applied_brl: storeCreditSafe,
+          coupon_discount_brl: couponDiscount,
+          store_credit_applied_brl: storeCreditApplied,
           discount_brl: discount,
           total_brl: total,
           currency: "BRL",
@@ -807,73 +969,19 @@ export async function POST(req: Request) {
     }
 
     if (total <= 0) {
-      const storeCreditApplied = Number.isFinite(requestedStoreCredit) ? requestedStoreCredit : 0;
-
-      if (storeCreditApplied > 0) {
-        const creditRes = await sb(
-          `user_store_credit?select=user_id,balance_brl&user_id=eq.${encodeURIComponent(
-            body.user_id
-          )}&limit=1`,
-          { method: "GET" }
-        );
-
-        const creditRows = (await creditRes.json()) as Array<{
-          user_id: string;
-          balance_brl: number | string | null;
-        }>;
-
-        const creditRow = creditRows?.[0];
-        const currentBalance = asNumber(creditRow?.balance_brl ?? 0);
-
-        if (!Number.isFinite(currentBalance) || currentBalance < storeCreditApplied) {
-          return NextResponse.json(
-            {
-              error: "Crédito em conta insuficiente",
-              detail: {
-                currentBalance,
-                storeCreditApplied,
-              },
-            },
-            { status: 409 }
-          );
-        }
-
-        const newBalance = Math.max(currentBalance - storeCreditApplied, 0);
-
-        await sb(`user_store_credit?user_id=eq.${encodeURIComponent(body.user_id)}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            balance_brl: Number(newBalance.toFixed(2)),
-          }),
-        });
-
-        await sb("user_store_credit_ledger", {
-          method: "POST",
-          body: JSON.stringify({
-            user_id: body.user_id,
-            entry_type: "debit",
-            source_type: "checkout",
-            source_id: orderId,
-            amount_brl: Number((-storeCreditApplied).toFixed(2)),
-            balance_after_brl: Number(newBalance.toFixed(2)),
-            description: `Uso de crédito no checkout do pedido ${orderId}`,
-          }),
-        });
-      }
-
       await sb(`orders?id=eq.${orderId}`, {
         method: "PATCH",
         body: JSON.stringify({
           status: "reserved",
           total_brl: 0,
-          coupon_discount_brl: Number.isFinite(requestedCouponDiscount)
-            ? requestedCouponDiscount
-            : 0,
+          coupon_discount_brl: couponDiscount,
           store_credit_applied_brl: storeCreditApplied,
           discount_brl: discount,
           shipping_brl: shipping,
           subtotal_brl: subtotal,
-          notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
+          notes: requestedCouponCode
+            ? `Cupom aplicado: ${requestedCouponCode}`
+            : null,
         }),
       });
 
@@ -885,9 +993,7 @@ export async function POST(req: Request) {
         p_provider_payload: {
           method: "store_credit",
           coupon_code: requestedCouponCode,
-          coupon_discount_brl: Number.isFinite(requestedCouponDiscount)
-            ? requestedCouponDiscount
-            : 0,
+          coupon_discount_brl: couponDiscount,
           store_credit_applied_brl: storeCreditApplied,
           subtotal_brl: subtotal,
           shipping_brl: shipping,

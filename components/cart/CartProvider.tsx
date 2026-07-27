@@ -92,8 +92,8 @@ function normalizeCartItem(raw: any): CartItem | null {
   if (rawItemType === "product") {
     const productId = String(
       raw?.item_key ??
-        raw?.product_id ??
-        String(raw?.sku_key ?? "").replace(/^product:/, "")
+      raw?.product_id ??
+      String(raw?.sku_key ?? "").replace(/^product:/, "")
     ).trim();
 
     if (!productId) return null;
@@ -257,9 +257,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const copy = prev.map((x) =>
         x.sku_key === skuKey
           ? {
-              ...x,
-              qty: q,
-            }
+            ...x,
+            qty: q,
+          }
           : x
       );
 
@@ -283,11 +283,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clear = useCallback(async () => {
     try {
-      if (orderId) {
+      if (orderId && session?.access_token) {
         await fetch("/api/cart/release", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({ order_id: orderId }),
         });
@@ -300,7 +301,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setExpiresAt(null);
       setLastReserveError(null);
     }
-  }, [orderId]);
+  }, [orderId, session?.access_token]);
 
   const reserveNow = useCallback(async () => {
     if (!isLoggedIn) return;

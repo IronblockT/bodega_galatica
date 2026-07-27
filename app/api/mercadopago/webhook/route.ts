@@ -8,7 +8,7 @@ function parseXSignature(xSignature: string) {
   return { ts, v1 };
 }
 
-function verifyMpSignature(req: Request, rawBody: string, paymentId: string) {
+function verifyMpSignature(req: Request, paymentId: string) {
   const secret = process.env.MP_WEBHOOK_SECRET;
   if (!secret) return false;
 
@@ -25,8 +25,6 @@ function verifyMpSignature(req: Request, rawBody: string, paymentId: string) {
   const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
   const computedA = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
 
-  const baseB = `${ts}.${xRequestId}.${rawBody}`;
-  const computedB = crypto.createHmac("sha256", secret).update(baseB).digest("hex");
 
   const safeEq = (a: string, b: string) => {
     const ba = Buffer.from(a, "utf8");
@@ -35,7 +33,10 @@ function verifyMpSignature(req: Request, rawBody: string, paymentId: string) {
     return crypto.timingSafeEqual(ba, bb);
   };
 
-  return safeEq(received, computedA.toLowerCase()) || safeEq(received, computedB.toLowerCase());
+  return safeEq(
+    received,
+    computedA.toLowerCase()
+  );
 }
 
 function mapInternalPaymentStatus(mpStatus: string) {
@@ -67,6 +68,12 @@ export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
 
+    const webhookUrl = new URL(req.url);
+
+    const signatureDataId =
+      webhookUrl.searchParams.get("data.id") ??
+      webhookUrl.searchParams.get("data_id");
+
     let payload: MpWebhookPayload = {};
     try {
       payload = rawBody ? JSON.parse(rawBody) : {};
@@ -89,7 +96,14 @@ export async function POST(req: Request) {
     }
 
     const enforceSig = process.env.MP_WEBHOOK_ENFORCE_SIG === "true";
-    const okSig = verifyMpSignature(req, rawBody, String(paymentId));
+
+    const signaturePaymentId =
+      signatureDataId ?? String(paymentId);
+
+    const okSig = verifyMpSignature(
+      req,
+      signaturePaymentId
+    );
 
     console.log("[MP webhook] sig-check", {
       enforce: enforceSig,
@@ -201,10 +215,18 @@ export async function POST(req: Request) {
       payment.date_last_updated || payment.date_approved || payment.date_created || null;
 
     const orderRes = await sb(
-      `orders?select=id,status&id=eq.${encodeURIComponent(orderId)}&limit=1`,
+      `orders?select=id,status,total_brl,currency&id=eq.${encodeURIComponent(
+        orderId
+      )}&limit=1`,
       { method: "GET" }
     );
-    const orderRows = (await orderRes.json()) as Array<{ id: string; status?: string }>;
+
+    const orderRows = (await orderRes.json()) as Array<{
+      id: string;
+      status?: string;
+      total_brl?: number | string | null;
+      currency?: string | null;
+    }>;
     const orderRow = orderRows?.[0];
 
     if (!orderRow?.id) {
@@ -254,7 +276,7 @@ export async function POST(req: Request) {
       !!exactPaymentRow &&
       String(exactPaymentRow.provider_payment_status ?? "") === String(mpStatus) &&
       String(exactPaymentRow.provider_payment_updated_at ?? "") ===
-        String(providerPaymentUpdatedAt ?? "");
+      String(providerPaymentUpdatedAt ?? "");
 
     const internalStatus = mapInternalPaymentStatus(mpStatus);
 
@@ -321,6 +343,48 @@ export async function POST(req: Request) {
       });
 
       return NextResponse.json({ received: true, idempotent: true });
+    }
+
+    if (mpStatus === "approved") {
+      const expectedAmount = Number(orderRow.total_brl);
+      const paidAmount = Number(payment.transaction_amount);
+
+      const expectedCurrency = String(
+        orderRow.currency ?? "BRL"
+      ).toUpperCase();
+
+      const paidCurrency = String(
+        payment.currency_id ?? ""
+      ).toUpperCase();
+
+      const expectedCents = Math.round(expectedAmount * 100);
+      const paidCents = Math.round(paidAmount * 100);
+
+      const validAmount =
+        Number.isFinite(expectedAmount) &&
+        Number.isFinite(paidAmount) &&
+        expectedCents === paidCents;
+
+      const validCurrency =
+        expectedCurrency === "BRL" &&
+        paidCurrency === "BRL";
+
+      if (!validAmount || !validCurrency) {
+        console.error("[MP webhook] approved payment does not match order", {
+          orderId,
+          paymentId: providerPaymentId,
+          expectedAmount,
+          paidAmount,
+          expectedCurrency,
+          paidCurrency,
+        });
+
+        return NextResponse.json({
+          received: true,
+          committed: false,
+          reason: "payment_order_mismatch",
+        });
+      }
     }
 
     if (mpStatus === "approved") {

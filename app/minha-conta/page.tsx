@@ -370,12 +370,9 @@ export default function MinhaContaPage() {
 
       const { data: creditRow, error: creditErr } = await supabase
         .from('user_store_credit')
-        .upsert(
-          { user_id: user.id },
-          { onConflict: 'user_id', ignoreDuplicates: false }
-        )
         .select('user_id, balance_brl, created_at, updated_at')
-        .single();
+        .eq('user_id', user.id)
+        .maybeSingle();
 
       if (!mounted) return;
 
@@ -385,7 +382,16 @@ export default function MinhaContaPage() {
         return;
       }
 
-      setStoreCredit(creditRow as StoreCreditRow);
+      setStoreCredit(
+        creditRow
+          ? (creditRow as StoreCreditRow)
+          : {
+            user_id: user.id,
+            balance_brl: 0,
+            created_at: '',
+            updated_at: '',
+          }
+      );
 
       setLoading(false);
     }

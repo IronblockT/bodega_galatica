@@ -54,7 +54,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, count, orderId, expiresAt, clear } = useCart();
 
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
   const [details, setDetails] = useState<CartItemDetail[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -278,7 +278,7 @@ export default function CheckoutPage() {
     try {
       setCheckoutError(null);
 
-      if (!user?.id) {
+      if (!user?.id || !session?.access_token) {
         setCheckoutError("Você precisa estar logado para continuar.");
         return;
       }
@@ -294,15 +294,12 @@ export default function CheckoutPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          user_id: user.id,
-          order_id: orderId,
-          shipping_brl: shipping,
-          coupon_code: couponInfo?.applied ? couponInfo.code : null,
-          coupon_discount_brl: couponDiscount,
-          store_credit_applied_brl: appliedCredit,
-          final_total_brl: finalTotal,
+          order_id: orderId,          
+          coupon_code: couponInfo?.applied ? couponInfo.code : null,          
+          store_credit_applied_brl: appliedCredit,          
           payer: {
             email: user.email ?? undefined,
           },
