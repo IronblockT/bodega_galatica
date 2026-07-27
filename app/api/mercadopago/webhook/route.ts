@@ -272,11 +272,20 @@ export async function POST(req: Request) {
     const shouldRetryCommit =
       mpStatus === "approved" && String(orderRow.status ?? "") !== "paid";
 
+    const storedPaymentUpdatedAtMs = exactPaymentRow?.provider_payment_updated_at
+      ? Date.parse(String(exactPaymentRow.provider_payment_updated_at))
+      : NaN;
+
+    const providerPaymentUpdatedAtMs = providerPaymentUpdatedAt
+      ? Date.parse(String(providerPaymentUpdatedAt))
+      : NaN;
+
     const samePaymentEvent =
       !!exactPaymentRow &&
       String(exactPaymentRow.provider_payment_status ?? "") === String(mpStatus) &&
-      String(exactPaymentRow.provider_payment_updated_at ?? "") ===
-      String(providerPaymentUpdatedAt ?? "");
+      Number.isFinite(storedPaymentUpdatedAtMs) &&
+      Number.isFinite(providerPaymentUpdatedAtMs) &&
+      storedPaymentUpdatedAtMs === providerPaymentUpdatedAtMs;
 
     const internalStatus = mapInternalPaymentStatus(mpStatus);
 
