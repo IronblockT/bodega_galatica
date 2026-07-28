@@ -396,6 +396,23 @@ export async function POST(req: Request) {
       }
     }
 
+    if (
+      String(orderRow.status ?? "") === "paid" &&
+      mpStatus !== "approved"
+    ) {
+      console.warn("[MP webhook] ignoring non-approved event for paid order", {
+        orderId,
+        paymentId: providerPaymentId,
+        mpStatus,
+      });
+
+      return NextResponse.json({
+        received: true,
+        order_unchanged: true,
+        reason: "paid_order_is_terminal",
+      });
+    }
+
     if (mpStatus === "approved") {
       console.log("[MP webhook] committing order", {
         orderId,
