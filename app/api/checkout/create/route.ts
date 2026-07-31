@@ -1074,17 +1074,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Falha ao criar checkout", detail: t }, { status: 502 });
     }
 
-    const mpPref = await mustJson<{ id?: string; init_point?: string }>(
-      mpRes,
-      "mercadopago preferences"
-    );
+    let mpPref: { id?: string; init_point?: string } | null = null;
 
-    if (!mpPref?.id || !mpPref?.init_point) {
-      throw new Error(
-        `mercadopago preferences: JSON sem id/init_point. Body: ${JSON.stringify(mpPref).slice(
-          0,
-          500
-        )}`
+    try {
+      mpPref = await mustJson<{ id?: string; init_point?: string }>(
+        mpRes,
+        "mercadopago preferences"
+      );
+
+      if (!mpPref?.id || !mpPref?.init_point) {
+        throw new Error(
+          `mercadopago preferences: JSON sem id/init_point. Body: ${JSON.stringify(mpPref).slice(
+            0,
+            500
+          )}`
+        );
+      }
+    } catch (err: unknown) {
+      await callRpc("rpc_checkout_release", {
+        p_order_id: orderId,
+      });
+
+      await sb(`orders?id=eq.${orderId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+
+      return NextResponse.json(
+        {
+          error: "Resposta inválida do Mercado Pago",
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        { status: 502 }
       );
     }
 
