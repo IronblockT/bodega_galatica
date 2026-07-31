@@ -1062,9 +1062,9 @@ export async function POST(req: Request) {
     if (!mpRes.ok) {
       const t = await mpRes.text().catch(() => "");
 
-      if (reservePayload) {
-        await callRpc("rpc_checkout_release", { p_order_id: orderId }).catch(() => null);
-      }
+      await callRpc("rpc_checkout_release", {
+        p_order_id: orderId,
+      });
 
       await sb(`orders?id=eq.${orderId}`, {
         method: "PATCH",
