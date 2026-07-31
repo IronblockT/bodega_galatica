@@ -191,10 +191,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [items]
   );
 
+  type ReleaseOrderResult =
+    | "released"
+    | "awaiting_payment"
+    | "failed";
+
   const releaseCurrentOrder = useCallback(
-    async (currentOrderId: string | null): Promise<boolean> => {
-      if (!currentOrderId) return true;
-      if (!session?.access_token) return false;
+    async (
+      currentOrderId: string | null
+    ): Promise<ReleaseOrderResult> => {
+      if (!currentOrderId) return "released";
+      if (!session?.access_token) return "failed";
 
       try {
         const res = await fetch("/api/cart/release", {
@@ -208,19 +215,36 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           }),
         });
 
+        const json = (await res.json().catch(() => null)) as {
+          code?: string;
+          error?: string;
+        } | null;
+
+        if (
+          res.status === 409 &&
+          json?.code === "ORDER_AWAITING_PAYMENT"
+        ) {
+          return "awaiting_payment";
+        }
+
         if (!res.ok) {
           console.warn("[cart] previous order could not be released", {
             orderId: currentOrderId,
             status: res.status,
+            error: json?.error ?? null,
           });
 
-          return false;
+          return "failed";
         }
 
-        return true;
+        return "released";
       } catch (err) {
-        console.error("[cart] failed to release previous order", err);
-        return false;
+        console.error(
+          "[cart] failed to release previous order",
+          err
+        );
+
+        return "failed";
       }
     },
     [session?.access_token]
@@ -233,12 +257,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const currentOrderId = orderId;
 
       if (currentOrderId) {
-        const released = await releaseCurrentOrder(currentOrderId);
+        const releaseResult = await releaseCurrentOrder(currentOrderId);
 
-        if (!released) {
-          setLastReserveError(
-            "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
-          );
+        if (releaseResult !== "released") {
+          if (releaseResult === "awaiting_payment") {
+            setAwaitingPayment(true);
+            setLastReserveError(
+              "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
+            );
+          } else {
+            setLastReserveError(
+              "Não foi possível liberar a reserva atual do carrinho."
+            );
+          }
+
           return;
         }
       }
@@ -314,12 +346,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const currentOrderId = orderId;
 
       if (currentOrderId) {
-        const released = await releaseCurrentOrder(currentOrderId);
+        const releaseResult = await releaseCurrentOrder(currentOrderId);
 
-        if (!released) {
-          setLastReserveError(
-            "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
-          );
+        if (releaseResult !== "released") {
+          if (releaseResult === "awaiting_payment") {
+            setAwaitingPayment(true);
+            setLastReserveError(
+              "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
+            );
+          } else {
+            setLastReserveError(
+              "Não foi possível liberar a reserva atual do carrinho."
+            );
+          }
+
           return;
         }
       }
@@ -352,12 +392,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const currentOrderId = orderId;
 
       if (currentOrderId) {
-        const released = await releaseCurrentOrder(currentOrderId);
+        const releaseResult = await releaseCurrentOrder(currentOrderId);
 
-        if (!released) {
-          setLastReserveError(
-            "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
-          );
+        if (releaseResult !== "released") {
+          if (releaseResult === "awaiting_payment") {
+            setAwaitingPayment(true);
+            setLastReserveError(
+              "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
+            );
+          } else {
+            setLastReserveError(
+              "Não foi possível liberar a reserva atual do carrinho."
+            );
+          }
+
           return;
         }
       }
@@ -378,11 +426,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const currentOrderId = orderId;
 
     if (currentOrderId) {
-      const released = await releaseCurrentOrder(currentOrderId);
+      const releaseResult = await releaseCurrentOrder(currentOrderId);
 
-      if (!released) {
+      if (releaseResult === "failed") {
         setLastReserveError(
-          "Não foi possível limpar o carrinho enquanto este pedido aguarda pagamento."
+          "Não foi possível liberar a reserva atual do carrinho."
         );
         return;
       }

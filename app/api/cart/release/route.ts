@@ -127,6 +127,17 @@ export async function POST(req: Request) {
       );
     }
 
+    if (order.status === "awaiting_payment") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "ORDER_AWAITING_PAYMENT",
+          error: "Pedido aguardando pagamento",
+        },
+        { status: 409 }
+      );
+    }
+
     if (!["draft", "reserved"].includes(order.status)) {
       return NextResponse.json(
         {
@@ -176,7 +187,7 @@ export async function POST(req: Request) {
         },
         { status: 400 }
       );
-    }    
+    }
 
     return NextResponse.json({
       ok: true,
