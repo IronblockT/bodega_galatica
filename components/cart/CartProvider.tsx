@@ -37,6 +37,7 @@ type ReserveResponse = {
   expires_at?: string | null;
   status?: string | null;
   error?: string;
+  code?: string;
 };
 
 type CartContextValue = {
@@ -153,6 +154,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const [reserving, setReserving] = useState(false);
   const [lastReserveError, setLastReserveError] = useState<string | null>(null);
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
 
   // load LS
   useEffect(() => {
@@ -189,42 +191,97 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [items]
   );
 
-  const addCartItem = useCallback((input: CartItem) => {
-    const q = Math.max(1, Number(input.qty || 1));
+  const releaseCurrentOrder = useCallback(
+    async (currentOrderId: string | null): Promise<boolean> => {
+      if (!currentOrderId) return true;
+      if (!session?.access_token) return false;
 
-    setItems((prev) => {
-      const idx = prev.findIndex((x) => x.sku_key === input.sku_key);
+      try {
+        const res = await fetch("/api/cart/release", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            order_id: currentOrderId,
+          }),
+        });
 
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = {
-          ...copy[idx],
-          qty: copy[idx].qty + q,
-        };
-        return copy;
+        if (!res.ok) {
+          console.warn("[cart] previous order could not be released", {
+            orderId: currentOrderId,
+            status: res.status,
+          });
+
+          return false;
+        }
+
+        return true;
+      } catch (err) {
+        console.error("[cart] failed to release previous order", err);
+        return false;
+      }
+    },
+    [session?.access_token]
+  );
+
+  const addCartItem = useCallback(
+    async (input: CartItem) => {
+      const q = Math.max(1, Number(input.qty || 1));
+
+      const currentOrderId = orderId;
+
+      if (currentOrderId) {
+        const released = await releaseCurrentOrder(currentOrderId);
+
+        if (!released) {
+          setLastReserveError(
+            "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
+          );
+          return;
+        }
       }
 
-      return [
-        ...prev,
-        {
-          ...input,
-          qty: q,
-        },
-      ];
-    });
+      setItems((prev) => {
+        const idx = prev.findIndex(
+          (x) => x.sku_key === input.sku_key
+        );
 
-    // Qualquer mudança no carrinho invalida a reserva anterior.
-    setOrderId(null);
-    setExpiresAt(null);
-    setLastReserveError(null);
-  }, []);
+        if (idx >= 0) {
+          const copy = [...prev];
+
+          copy[idx] = {
+            ...copy[idx],
+            qty: copy[idx].qty + q,
+          };
+
+          return copy;
+        }
+
+        return [
+          ...prev,
+          {
+            ...input,
+            qty: q,
+          },
+        ];
+      });
+
+      setOrderId(null);
+      setExpiresAt(null);
+      setLastReserveError(null);
+      setAwaitingPayment(false);
+    },
+    [orderId, releaseCurrentOrder]
+  );
 
   const addItem = useCallback(
     (sku_key: string, qty: number) => {
       const skuKey = String(sku_key ?? "").trim();
       if (!skuKey) return;
 
-      addCartItem({
+      void addCartItem({
         item_type: "card",
         item_key: skuKey,
         sku_key: skuKey,
@@ -239,7 +296,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const productId = String(product_id ?? "").trim();
       if (!productId) return;
 
-      addCartItem({
+      void addCartItem({
         item_type: "product",
         item_key: productId,
         sku_key: `product:${productId}`,
@@ -249,64 +306,100 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [addCartItem]
   );
 
-  const setQty = useCallback((sku_key: string, qty: number) => {
-    const skuKey = String(sku_key ?? "").trim();
-    const q = Math.max(0, Number(qty || 0));
+  const setQty = useCallback(
+    async (sku_key: string, qty: number) => {
+      const skuKey = String(sku_key ?? "").trim();
+      const q = Math.max(0, Number(qty || 0));
 
-    setItems((prev) => {
-      const copy = prev.map((x) =>
-        x.sku_key === skuKey
-          ? {
-            ...x,
-            qty: q,
-          }
-          : x
-      );
+      const currentOrderId = orderId;
 
-      return copy.filter((x) => x.qty > 0);
-    });
+      if (currentOrderId) {
+        const released = await releaseCurrentOrder(currentOrderId);
 
-    setOrderId(null);
-    setExpiresAt(null);
-    setLastReserveError(null);
-  }, []);
-
-  const removeItem = useCallback((sku_key: string) => {
-    const skuKey = String(sku_key ?? "").trim();
-
-    setItems((prev) => prev.filter((x) => x.sku_key !== skuKey));
-
-    setOrderId(null);
-    setExpiresAt(null);
-    setLastReserveError(null);
-  }, []);
-
-  const clear = useCallback(async () => {
-    try {
-      if (orderId && session?.access_token) {
-        await fetch("/api/cart/release", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ order_id: orderId }),
-        });
+        if (!released) {
+          setLastReserveError(
+            "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
+          );
+          return;
+        }
       }
-    } catch (err) {
-      console.error("[cart.clear] failed to release order", err);
-    } finally {
-      setItems([]);
+
+      setItems((prev) => {
+        const copy = prev.map((x) =>
+          x.sku_key === skuKey
+            ? {
+              ...x,
+              qty: q,
+            }
+            : x
+        );
+
+        return copy.filter((x) => x.qty > 0);
+      });
+
       setOrderId(null);
       setExpiresAt(null);
       setLastReserveError(null);
+      setAwaitingPayment(false);
+    },
+    [orderId, releaseCurrentOrder]
+  );
+
+  const removeItem = useCallback(
+    async (sku_key: string) => {
+      const skuKey = String(sku_key ?? "").trim();
+
+      const currentOrderId = orderId;
+
+      if (currentOrderId) {
+        const released = await releaseCurrentOrder(currentOrderId);
+
+        if (!released) {
+          setLastReserveError(
+            "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
+          );
+          return;
+        }
+      }
+
+      setItems((prev) =>
+        prev.filter((x) => x.sku_key !== skuKey)
+      );
+
+      setOrderId(null);
+      setExpiresAt(null);
+      setLastReserveError(null);
+      setAwaitingPayment(false);
+    },
+    [orderId, releaseCurrentOrder]
+  );
+
+  const clear = useCallback(async () => {
+    const currentOrderId = orderId;
+
+    if (currentOrderId) {
+      const released = await releaseCurrentOrder(currentOrderId);
+
+      if (!released) {
+        setLastReserveError(
+          "Não foi possível limpar o carrinho enquanto este pedido aguarda pagamento."
+        );
+        return;
+      }
     }
-  }, [orderId, session?.access_token]);
+
+    setItems([]);
+    setOrderId(null);
+    setExpiresAt(null);
+    setLastReserveError(null);
+    setAwaitingPayment(false);
+  }, [orderId, releaseCurrentOrder]);
 
   const reserveNow = useCallback(async () => {
     if (!isLoggedIn) return;
     if (!session?.access_token) return;
     if (items.length === 0) return;
+    if (awaitingPayment) return;
 
     setReserving(true);
     setLastReserveError(null);
@@ -328,6 +421,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const json = (await res.json()) as ReserveResponse;
 
       if (!res.ok || !json.ok) {
+        if (json.code === "ORDER_AWAITING_PAYMENT") {
+          setAwaitingPayment(true);
+          setLastReserveError(null);
+          return;
+        }
+
         setLastReserveError(json.error ?? "Falha ao reservar carrinho.");
         return;
       }
@@ -339,7 +438,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setReserving(false);
     }
-  }, [isLoggedIn, session?.access_token, items, orderId]);
+  }, [isLoggedIn, session?.access_token, items, orderId, awaitingPayment]);
 
   // auto-renova a cada 12 minutos enquanto tiver carrinho
   useEffect(() => {

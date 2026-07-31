@@ -84,10 +84,10 @@ export async function POST(req: Request) {
     // =====================================================
     const orderRes = await fetch(
       `${supabaseUrl}/rest/v1/orders` +
-        `?select=id,status,user_id` +
-        `&id=eq.${encodeURIComponent(orderId)}` +
-        `&user_id=eq.${encodeURIComponent(userId)}` +
-        `&limit=1`,
+      `?select=id,status,user_id` +
+      `&id=eq.${encodeURIComponent(orderId)}` +
+      `&user_id=eq.${encodeURIComponent(userId)}` +
+      `&limit=1`,
       {
         method: "GET",
         headers: {
@@ -127,7 +127,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!["draft", "reserved", "awaiting_payment"].includes(order.status)) {
+    if (!["draft", "reserved"].includes(order.status)) {
       return NextResponse.json(
         {
           ok: false,
@@ -141,12 +141,12 @@ export async function POST(req: Request) {
     // 6) Libera reservas
     // =====================================================
     const rpcRes = await fetch(
-      `${supabaseUrl}/rest/v1/rpc/rpc_checkout_release`,
+      `${supabaseUrl}/rest/v1/rpc/rpc_checkout_release_user`,
       {
         method: "POST",
         headers: {
-          apikey: serviceRole,
-          Authorization: `Bearer ${serviceRole}`,
+          apikey: anonKey || serviceRole,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -176,45 +176,7 @@ export async function POST(req: Request) {
         },
         { status: 400 }
       );
-    }
-
-    // =====================================================
-    // 7) Carrinho explicitamente abandonado → cancelled
-    // =====================================================
-    const cancelRes = await fetch(
-      `${supabaseUrl}/rest/v1/orders?id=eq.${encodeURIComponent(
-        orderId
-      )}&user_id=eq.${encodeURIComponent(userId)}`,
-      {
-        method: "PATCH",
-        headers: {
-          apikey: serviceRole,
-          Authorization: `Bearer ${serviceRole}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          status: "cancelled",
-        }),
-      }
-    );
-
-    if (!cancelRes.ok) {
-      const detail = await cancelRes.text().catch(() => "");
-
-      console.error("[cart.release] reservation released but cancel failed", {
-        orderId,
-        userId,
-        detail,
-      });
-
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Reserva liberada, mas falhou ao cancelar o pedido",
-        },
-        { status: 500 }
-      );
-    }
+    }    
 
     return NextResponse.json({
       ok: true,

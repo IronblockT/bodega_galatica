@@ -1010,7 +1010,27 @@ export async function POST(req: Request) {
       });
     }
 
+    const refreshResult = (await callRpcJson("rpc_checkout_refresh", {
+      p_order_id: orderId,
+      p_ttl_minutes: 30,
+    })) as {
+      ok?: boolean;
+      order_id?: string;
+      expires_at?: string | null;
+    } | null;
+
+    const checkoutExpiresAt = refreshResult?.expires_at ?? null;
+
+    if (!checkoutExpiresAt) {
+      throw new Error(
+        "Não foi possível determinar a expiração da reserva do checkout"
+      );
+    }
+
     const prefBody = {
+      expires: true,
+      expiration_date_from: new Date().toISOString(),
+      expiration_date_to: checkoutExpiresAt,
       items: [
         {
           title: `Pedido Bodega Galática #${orderId.slice(0, 8)}`,

@@ -16,18 +16,18 @@ type Body = {
 
 type NormalizedCartItem =
   | {
-      item_type: "card";
-      sku_key: string;
-      item_key: string;
-      qty: number;
-    }
+    item_type: "card";
+    sku_key: string;
+    item_key: string;
+    qty: number;
+  }
   | {
-      item_type: "product";
-      product_id: string;
-      item_key: string;
-      sku_key: string;
-      qty: number;
-    };
+    item_type: "product";
+    product_id: string;
+    item_key: string;
+    sku_key: string;
+    qty: number;
+  };
 
 function buildInFilter(values: string[]) {
   const quoted = values.map((v) => `"${v.replaceAll('"', '\\"')}"`).join(",");
@@ -51,8 +51,8 @@ function normalizeItems(items: RawCartItem[]): NormalizedCartItem[] {
     if (rawType === "product") {
       const productId = String(
         raw?.product_id ??
-          raw?.item_key ??
-          String(raw?.sku_key ?? "").replace(/^product:/, "")
+        raw?.item_key ??
+        String(raw?.sku_key ?? "").replace(/^product:/, "")
       ).trim();
 
       if (!productId) continue;
@@ -233,7 +233,18 @@ export async function POST(req: Request) {
       const existing = (await existingRes.json()) as any[];
       const row = existing?.[0];
 
-      const okStatus = ["draft", "reserved", "awaiting_payment"].includes(
+      if (row?.id && String(row.status ?? "") === "awaiting_payment") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Pedido aguardando pagamento e não pode ser reservado novamente",
+            code: "ORDER_AWAITING_PAYMENT",
+          },
+          { status: 409 }
+        );
+      }
+
+      const okStatus = ["draft", "reserved"].includes(
         String(row?.status ?? "")
       );
 
