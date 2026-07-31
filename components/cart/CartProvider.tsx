@@ -62,6 +62,7 @@ type CartContextValue = {
   setQty: (sku_key: string, qty: number) => void;
   removeItem: (sku_key: string) => void;
   clear: () => Promise<void>;
+  clearLocal: () => void;
 
   reserveNow: () => Promise<void>;
 };
@@ -422,6 +423,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [orderId, releaseCurrentOrder]
   );
 
+  const clearLocal = useCallback(() => {
+    setItems([]);
+    setOrderId(null);
+    setExpiresAt(null);
+    setLastReserveError(null);
+    setAwaitingPayment(false);
+  }, []);
+
   const clear = useCallback(async () => {
     const currentOrderId = orderId;
 
@@ -436,12 +445,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    setItems([]);
-    setOrderId(null);
-    setExpiresAt(null);
-    setLastReserveError(null);
-    setAwaitingPayment(false);
-  }, [orderId, releaseCurrentOrder]);
+    clearLocal();
+  }, [orderId, releaseCurrentOrder, clearLocal]);
 
   const reserveNow = useCallback(async () => {
     if (!isLoggedIn) return;
@@ -514,6 +519,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setQty,
       removeItem,
       clear,
+      clearLocal,
       reserveNow,
     }),
     [
@@ -528,6 +534,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setQty,
       removeItem,
       clear,
+      clearLocal,
       reserveNow,
     ]
   );
