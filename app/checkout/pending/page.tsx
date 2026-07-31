@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/components/hooks/useAuth";
 
 const panelClass =
   "rounded-2xl border border-white/10 bg-[#0B0C10]/70 backdrop-blur shadow-2xl";
@@ -12,6 +12,7 @@ type PendingState = "waiting" | "checking" | "confirmed" | "error";
 
 export default function CheckoutPendingPage() {
   const router = useRouter();
+  const { session } = useAuth();
 
   const [orderId, setOrderId] = useState<string | null>(null);
   const [state, setState] = useState<PendingState>("waiting");
@@ -26,53 +27,48 @@ export default function CheckoutPendingPage() {
     async (targetOrderId: string) => {
       if (checkingRef.current || finishedRef.current) return;
 
+      if (!session?.access_token) {
+        setState("waiting");
+        setMessage("Aguardando sua sessão para consultar o pedido.");
+        return;
+      }
+
       checkingRef.current = true;
       setState((current) => (current === "waiting" ? "checking" : current));
 
       try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+        const res = await fetch(
+          `/api/checkout/status?order_id=${encodeURIComponent(targetOrderId)}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }
+        );
 
-        if (userError) {
-          throw new Error(userError.message);
-        }
+        const json = (await res.json().catch(() => null)) as {
+          status?: string;
+          paid?: boolean;
+          error?: string;
+        } | null;
 
-        if (!user) {
+        if (!res.ok) {
           throw new Error(
-            "Sua sessão expirou. Entre novamente para consultar o pedido.",
+            json?.error ?? `Falha ao consultar pedido: HTTP ${res.status}`
           );
         }
 
-        const { data: order, error: orderError } = await supabase
-          .from("orders")
-          .select("id, status, updated_at")
-          .eq("id", targetOrderId)
-          .eq("user_id", user.id)
-          .maybeSingle();
+        const orderStatus = String(json?.status ?? "").toLowerCase();
 
-        if (orderError) {
-          throw new Error(orderError.message);
-        }
-
-        if (!order) {
-          throw new Error(
-            "Pedido não encontrado ou não pertence ao usuário conectado.",
-          );
-        }
-
-        const orderStatus = String(order.status ?? "").toLowerCase();
-
-        if (orderStatus === "paid") {
+        if (json?.paid || orderStatus === "paid") {
           finishedRef.current = true;
           setState("confirmed");
           setMessage("Pagamento confirmado! Redirecionando...");
 
           router.replace(
-            `/checkout/success?order=${encodeURIComponent(
-              targetOrderId,
-            )}&status=approved`,
+            `/checkout/success?order=${encodeURIComponent(targetOrderId)}`
           );
           return;
         }
@@ -81,16 +77,14 @@ export default function CheckoutPendingPage() {
           finishedRef.current = true;
 
           router.replace(
-            `/checkout/failure?order=${encodeURIComponent(
-              targetOrderId,
-            )}&status=rejected`,
+            `/checkout/failure?order=${encodeURIComponent(targetOrderId)}`
           );
           return;
         }
 
         setState("waiting");
         setMessage(
-          "Pagamento recebido. Estamos aguardando a confirmação automática do pedido.",
+          "Pagamento recebido. Estamos aguardando a confirmação automática do pedido."
         );
       } catch (error) {
         console.error("[checkout/pending] status check failed", error);
@@ -99,13 +93,13 @@ export default function CheckoutPendingPage() {
         setMessage(
           error instanceof Error
             ? error.message
-            : "Não foi possível consultar o pedido agora. Tentaremos novamente.",
+            : "Não foi possível consultar o pedido agora. Tentaremos novamente."
         );
       } finally {
         checkingRef.current = false;
       }
     },
-    [router],
+    [router, session?.access_token]
   );
 
   useEffect(() => {
@@ -154,13 +148,12 @@ export default function CheckoutPendingPage() {
         <div className={panelClass}>
           <div className="p-8">
             <div
-              className={`mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full text-2xl ${
-                isConfirmed
-                  ? "bg-emerald-500/20"
-                  : hasError
-                    ? "bg-rose-500/20"
-                    : "bg-amber-500/20"
-              }`}
+              className={`mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full text-2xl ${isConfirmed
+                ? "bg-emerald-500/20"
+                : hasError
+                  ? "bg-rose-500/20"
+                  : "bg-amber-500/20"
+                }`}
             >
               {isConfirmed ? "✓" : hasError ? "!" : "⏳"}
             </div>
