@@ -63,6 +63,7 @@ type CartContextValue = {
   removeItem: (sku_key: string) => void;
   clear: () => Promise<void>;
   clearLocal: () => void;
+  detachOrderLocal: () => void;
 
   reserveNow: () => Promise<void>;
 };
@@ -448,6 +449,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     clearLocal();
   }, [orderId, releaseCurrentOrder, clearLocal]);
 
+  const detachOrderLocal = useCallback(() => {
+    setOrderId(null);
+    setExpiresAt(null);
+    setLastReserveError(null);
+    setAwaitingPayment(false);
+  }, []);
+
   const reserveNow = useCallback(async () => {
     if (!isLoggedIn) return;
     if (!session?.access_token) return;
@@ -520,6 +528,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       removeItem,
       clear,
       clearLocal,
+      detachOrderLocal,
       reserveNow,
     }),
     [
@@ -535,6 +544,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       removeItem,
       clear,
       clearLocal,
+      detachOrderLocal,
       reserveNow,
     ]
   );
