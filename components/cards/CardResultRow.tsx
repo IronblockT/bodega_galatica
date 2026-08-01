@@ -164,7 +164,11 @@ export function CardResultRow({ card }: any) {
               return;
             }
 
-            addItem(variant.sku_key, qty);
+            addItem(
+              variant.sku_key,
+              qty,
+              Math.max(0, Number(variant.stock ?? 0))
+            );
 
             console.log("[add-to-cart]", {
               card_uid: card.uid,

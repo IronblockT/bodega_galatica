@@ -52,14 +52,22 @@ type CartContextValue = {
   /**
    * Mantido para singles.
    */
-  addItem: (sku_key: string, qty: number) => void;
+  addItem: (
+    sku_key: string,
+    qty: number,
+    maxAvailable: number
+  ) => void;
 
   /**
    * Novo método para produtos gerais.
    */
   addProduct: (product_id: string, qty: number) => void;
 
-  setQty: (sku_key: string, qty: number) => void;
+  setQty: (
+    sku_key: string,
+    qty: number,
+    maxAvailable?: number
+  ) => Promise<void>;
   removeItem: (sku_key: string) => void;
   clear: () => Promise<void>;
   clearLocal: () => void;
@@ -253,16 +261,66 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addCartItem = useCallback(
-    async (input: CartItem) => {
-      const q = Math.max(1, Number(input.qty || 1));
+    async (
+      input: CartItem,
+      maxAvailable?: number
+    ) => {
+      const requestedQty = Math.max(
+        1,
+        Math.floor(Number(input.qty || 1))
+      );
+
+      const hasStockLimit = Number.isFinite(
+        Number(maxAvailable)
+      );
+
+      const safeMaxAvailable = hasStockLimit
+        ? Math.max(
+          0,
+          Math.floor(Number(maxAvailable))
+        )
+        : null;
+
+      const currentQty =
+        items.find(
+          (item) => item.sku_key === input.sku_key
+        )?.qty ?? 0;
+
+      if (
+        safeMaxAvailable !== null &&
+        currentQty >= safeMaxAvailable
+      ) {
+        setLastReserveError(
+          `Você já adicionou todas as ${safeMaxAvailable} unidade(s) disponíveis deste item.`
+        );
+        return;
+      }
+
+      const qtyToAdd =
+        safeMaxAvailable === null
+          ? requestedQty
+          : Math.min(
+            requestedQty,
+            safeMaxAvailable - currentQty
+          );
+
+      if (qtyToAdd <= 0) {
+        setLastReserveError(
+          "Este item não possui estoque disponível."
+        );
+        return;
+      }
 
       const currentOrderId = orderId;
 
       if (currentOrderId) {
-        const releaseResult = await releaseCurrentOrder(currentOrderId);
+        const releaseResult =
+          await releaseCurrentOrder(currentOrderId);
 
         if (releaseResult !== "released") {
-          if (releaseResult === "awaiting_payment") {
+          if (
+            releaseResult === "awaiting_payment"
+          ) {
             setAwaitingPayment(true);
             setLastReserveError(
               "Não foi possível alterar o carrinho enquanto este pedido aguarda pagamento."
@@ -279,15 +337,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       setItems((prev) => {
         const idx = prev.findIndex(
-          (x) => x.sku_key === input.sku_key
+          (item) =>
+            item.sku_key === input.sku_key
         );
 
         if (idx >= 0) {
           const copy = [...prev];
+          const existingQty = copy[idx].qty;
+
+          const nextQty =
+            safeMaxAvailable === null
+              ? existingQty + qtyToAdd
+              : Math.min(
+                existingQty + qtyToAdd,
+                safeMaxAvailable
+              );
 
           copy[idx] = {
             ...copy[idx],
-            qty: copy[idx].qty + q,
+            qty: nextQty,
           };
 
           return copy;
@@ -297,30 +365,57 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           {
             ...input,
-            qty: q,
+            qty:
+              safeMaxAvailable === null
+                ? qtyToAdd
+                : Math.min(
+                  qtyToAdd,
+                  safeMaxAvailable
+                ),
           },
         ];
       });
 
       setOrderId(null);
       setExpiresAt(null);
-      setLastReserveError(null);
       setAwaitingPayment(false);
+
+      if (qtyToAdd < requestedQty) {
+        setLastReserveError(
+          `A quantidade foi limitada às ${safeMaxAvailable} unidade(s) disponíveis.`
+        );
+      } else {
+        setLastReserveError(null);
+      }
     },
-    [orderId, releaseCurrentOrder]
+    [
+      items,
+      orderId,
+      releaseCurrentOrder,
+    ]
   );
 
   const addItem = useCallback(
-    (sku_key: string, qty: number) => {
-      const skuKey = String(sku_key ?? "").trim();
+    (
+      sku_key: string,
+      qty: number,
+      maxAvailable: number
+    ) => {
+      const skuKey = String(
+        sku_key ?? ""
+      ).trim();
+
       if (!skuKey) return;
 
-      void addCartItem({
-        item_type: "card",
-        item_key: skuKey,
-        sku_key: skuKey,
-        qty,
-      });
+      void addCartItem(
+        {
+          item_type: "card",
+          item_key: skuKey,
+          sku_key: skuKey,
+          qty,
+        },
+        maxAvailable
+      );
     },
     [addCartItem]
   );
@@ -341,14 +436,50 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setQty = useCallback(
-    async (sku_key: string, qty: number) => {
+    async (
+      sku_key: string,
+      qty: number,
+      maxAvailable?: number
+    ) => {
       const skuKey = String(sku_key ?? "").trim();
-      const q = Math.max(0, Number(qty || 0));
+
+      const requestedQty = Math.max(
+        0,
+        Math.floor(Number(qty || 0))
+      );
+
+      const hasStockLimit = Number.isFinite(
+        Number(maxAvailable)
+      );
+
+      const safeMaxAvailable = hasStockLimit
+        ? Math.max(
+          0,
+          Math.floor(Number(maxAvailable))
+        )
+        : null;
+
+      const finalQty =
+        safeMaxAvailable === null
+          ? requestedQty
+          : Math.min(requestedQty, safeMaxAvailable);
+
+      if (
+        requestedQty > 0 &&
+        safeMaxAvailable !== null &&
+        finalQty <= 0
+      ) {
+        setLastReserveError(
+          "Este item não possui estoque disponível."
+        );
+        return;
+      }
 
       const currentOrderId = orderId;
 
       if (currentOrderId) {
-        const releaseResult = await releaseCurrentOrder(currentOrderId);
+        const releaseResult =
+          await releaseCurrentOrder(currentOrderId);
 
         if (releaseResult !== "released") {
           if (releaseResult === "awaiting_payment") {
@@ -367,22 +498,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       setItems((prev) => {
-        const copy = prev.map((x) =>
-          x.sku_key === skuKey
+        const copy = prev.map((item) =>
+          item.sku_key === skuKey
             ? {
-              ...x,
-              qty: q,
+              ...item,
+              qty: finalQty,
             }
-            : x
+            : item
         );
 
-        return copy.filter((x) => x.qty > 0);
+        return copy.filter((item) => item.qty > 0);
       });
 
       setOrderId(null);
       setExpiresAt(null);
-      setLastReserveError(null);
       setAwaitingPayment(false);
+
+      if (
+        safeMaxAvailable !== null &&
+        requestedQty > safeMaxAvailable
+      ) {
+        setLastReserveError(
+          `A quantidade máxima disponível deste item é ${safeMaxAvailable}.`
+        );
+      } else {
+        setLastReserveError(null);
+      }
     },
     [orderId, releaseCurrentOrder]
   );

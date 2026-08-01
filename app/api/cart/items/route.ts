@@ -89,6 +89,17 @@ export async function POST(req: Request) {
         `swu_price_current?select=sku_key,card_uid,finish,promo_type,condition,price_brl&sku_key=in.${skuIn}`
       );
 
+      const inventoryRows = await sb(
+        `swu_inventory_ui?select=sku_key,qty_available&sku_key=in.${skuIn}`
+      );
+
+      const inventoryMap = new Map(
+        (inventoryRows ?? []).map((row: any) => [
+          row.sku_key,
+          Math.max(0, Number(row.qty_available ?? 0)),
+        ])
+      );
+
       const cardUidSet = new Set<string>();
 
       for (const row of priceRows as any[]) {
@@ -139,7 +150,7 @@ export async function POST(req: Request) {
           condition: row.condition ?? null,
           promo_type: row.promo_type ?? null,
           price_brl: row.price_brl ?? card?.min_price_brl_nm ?? null,
-          qty_available: null,
+          qty_available: inventoryMap.get(row.sku_key) ?? 0,
         };
       });
 

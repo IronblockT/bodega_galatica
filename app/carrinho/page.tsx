@@ -15,6 +15,7 @@ type CartItemDetail = {
   condition: string | null;
   promo_type: string | null;
   price_brl: number | string | null;
+  qty_available: number | string | null;
 };
 
 const panelClass =
@@ -41,11 +42,47 @@ export default function CarrinhoPage() {
     orderId,
     expiresAt,
     reserveNow,
+    setQty,
+    removeItem,
     clear,
   } = useCart();
 
   const [details, setDetails] = useState<CartItemDetail[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  const [updatingSku, setUpdatingSku] = useState<string | null>(null);
+
+  async function handleQuantityChange(
+    skuKey: string,
+    nextQuantity: number,
+    maxAvailable: number
+  ) {
+    if (updatingSku) return;
+
+    setUpdatingSku(skuKey);
+
+    try {
+      await setQty(
+        skuKey,
+        Math.max(0, nextQuantity),
+        Math.max(0, maxAvailable)
+      );
+    } finally {
+      setUpdatingSku(null);
+    }
+  }
+
+  async function handleRemoveItem(skuKey: string) {
+    if (updatingSku) return;
+
+    setUpdatingSku(skuKey);
+
+    try {
+      await removeItem(skuKey);
+    } finally {
+      setUpdatingSku(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -111,12 +148,23 @@ export default function CarrinhoPage() {
           : Number(detail?.price_brl ?? 0);
 
       const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;
+
+      const rawAvailable =
+        typeof detail?.qty_available === "string"
+          ? Number(detail.qty_available)
+          : Number(detail?.qty_available ?? 0);
+
+      const qtyAvailable = Number.isFinite(rawAvailable)
+        ? Math.max(0, Math.floor(rawAvailable))
+        : 0;
+
       const subtotal = safeUnitPrice * it.qty;
 
       return {
         ...it,
         detail,
         unitPrice: safeUnitPrice,
+        qtyAvailable,
         subtotal,
       };
     });
@@ -206,7 +254,63 @@ export default function CarrinhoPage() {
 
                             <div>
                               <div className="text-xs text-white/45">Quantidade</div>
-                              <div className="text-white/85">{row.qty}</div>
+
+                              <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  aria-label={`Diminuir quantidade de ${row.detail?.name ?? "item"}`}
+                                  disabled={updatingSku !== null}
+                                  onClick={() =>
+                                    void handleQuantityChange(
+                                      row.sku_key,
+                                      row.qty - 1,
+                                      row.qtyAvailable
+                                    )
+                                  }
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/5 text-base font-semibold text-white/85 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  −
+                                </button>
+
+                                <span className="min-w-6 text-center font-semibold text-white/90">
+                                  {row.qty}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  aria-label={`Aumentar quantidade de ${row.detail?.name ?? "item"}`}
+                                  disabled={
+                                    updatingSku !== null ||
+                                    row.qty >= row.qtyAvailable
+                                  }
+                                  onClick={() =>
+                                    void handleQuantityChange(
+                                      row.sku_key,
+                                      row.qty + 1,
+                                      row.qtyAvailable
+                                    )
+                                  }
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/5 text-base font-semibold text-white/85 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  +
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={updatingSku !== null}
+                                  onClick={() =>
+                                    void handleRemoveItem(row.sku_key)
+                                  }
+                                  className="ml-1 text-xs font-semibold text-rose-300 transition-colors hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  {updatingSku === row.sku_key
+                                    ? "Atualizando..."
+                                    : "Remover"}
+                                </button>
+                              </div>
+                              <div className="mt-1 text-[11px] text-white/45">
+                                Máximo disponível: {row.qtyAvailable}
+                              </div>
                             </div>
 
                             <div>
