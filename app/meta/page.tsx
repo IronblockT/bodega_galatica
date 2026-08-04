@@ -4,6 +4,8 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
 import { MetaDashboard } from "@/components/meta/MetaDashboard";
 import { supabase } from "@/lib/supabaseClient";
 
+export const dynamic = "force-dynamic";
+
 type KarabastCardRef = {
   id: string | null;
   count?: number | null;

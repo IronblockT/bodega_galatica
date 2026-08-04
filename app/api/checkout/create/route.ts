@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendOrderConfirmationEmail } from "../../../../lib/sendOrderConfirmationEmail";
 
 type CreateCheckoutBody = {
   user_id?: string;
@@ -412,6 +413,18 @@ export async function POST(req: Request) {
       );
     }
 
+    const shippingAddressSnapshot = {
+      id: shippingAddress?.id ?? null,
+      label: shippingAddress?.label ?? null,
+      cep: shippingAddress?.cep ?? null,
+      street: shippingAddress?.street ?? null,
+      number: shippingAddress?.number ?? null,
+      complement: shippingAddress?.complement ?? null,
+      district: shippingAddress?.district ?? null,
+      city: shippingAddress?.city ?? null,
+      state: shippingAddress?.state ?? null,
+    };
+
     // =====================================================
     // Saldo oficial de crédito da loja
     // =====================================================
@@ -716,7 +729,10 @@ export async function POST(req: Request) {
           store_credit_applied_brl: storeCreditApplied,
           discount_brl: discount,
           total_brl: total,
-          notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
+          shipping_address_snapshot: shippingAddressSnapshot,
+          notes: requestedCouponCode
+            ? `Cupom aplicado: ${requestedCouponCode}`
+            : null,
         }),
       });
     } else {
@@ -890,7 +906,10 @@ export async function POST(req: Request) {
           discount_brl: discount,
           total_brl: total,
           currency: "BRL",
-          notes: requestedCouponCode ? `Cupom aplicado: ${requestedCouponCode}` : null,
+          shipping_address_snapshot: shippingAddressSnapshot,
+          notes: requestedCouponCode
+            ? `Cupom aplicado: ${requestedCouponCode}`
+            : null,
         }),
       });
 
@@ -1000,6 +1019,35 @@ export async function POST(req: Request) {
           total_brl: 0,
         },
       });
+
+      try {
+        const emailResult =
+          await sendOrderConfirmationEmail(orderId);
+
+        console.log(
+          "[checkout/create] purchase confirmation email",
+          {
+            orderId,
+            emailSent: emailResult.email_sent,
+            alreadySent: emailResult.already_sent,
+            recipientEmail: emailResult.recipient_email,
+            providerMessageId:
+              emailResult.provider_message_id,
+            warning: emailResult.warning,
+          }
+        );
+      } catch (emailError: unknown) {
+        console.error(
+          "[checkout/create] purchase confirmation email failed (non-fatal)",
+          {
+            orderId,
+            message:
+              emailError instanceof Error
+                ? emailError.message
+                : String(emailError),
+          }
+        );
+      }
 
       return NextResponse.json({
         order_id: orderId,

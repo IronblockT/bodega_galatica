@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { sendOrderConfirmationEmail } from "../../../../lib/sendOrderConfirmationEmail";
 
 function parseXSignature(xSignature: string) {
   const parts = xSignature.split(",").map((p) => p.trim());
@@ -426,6 +427,36 @@ export async function POST(req: Request) {
         p_amount_brl: payment.transaction_amount,
         p_provider_payload: payment,
       });
+      try {
+        const emailResult =
+          await sendOrderConfirmationEmail(orderId);
+
+        console.log(
+          "[MP webhook] purchase confirmation email",
+          {
+            orderId,
+            paymentId: providerPaymentId,
+            emailSent: emailResult.email_sent,
+            alreadySent: emailResult.already_sent,
+            recipientEmail: emailResult.recipient_email,
+            providerMessageId:
+              emailResult.provider_message_id,
+            warning: emailResult.warning,
+          }
+        );
+      } catch (emailError: unknown) {
+        console.error(
+          "[MP webhook] purchase confirmation email failed (non-fatal)",
+          {
+            orderId,
+            paymentId: providerPaymentId,
+            message:
+              emailError instanceof Error
+                ? emailError.message
+                : String(emailError),
+          }
+        );
+      }
     } else if (mpStatus === "rejected" || mpStatus === "cancelled") {
       console.log("[MP webhook] releasing order", {
         orderId,
